@@ -154,4 +154,9 @@ class FirebaseAuthService implements AuthService {
     await _auth.signOut();
     _cachedProfile = null;
   }
+
+  @override
+  Future<String?> getIdToken([bool forceRefresh = false]) async {
+    return _auth.currentUser?.getIdToken(forceRefresh);
+  }
 }

@@ -15,9 +15,11 @@ from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 import base64
 import os
+import uuid
 
 from app.core.crypto_engine import RealPQCCryptoEngine
 from app.core.session_manager import security_manager
+from app.core.firestore_service import firestore_service
 from app.api.v1.endpoints.telemetry import _DETECTED_ALERTS
 
 router = APIRouter()
@@ -45,7 +47,7 @@ async def simulate_replay_attack():
     incident_desc = f"Simulated replay attack: Duplicate sequence #{seq} injected for {device_id}"
 
     # Record alert in SIEM
-    alert_id = f"ALT-REPLAY-{int(datetime.now(timezone.utc).timestamp())}"
+    alert_id = f"ALT-REPLAY-{int(datetime.now(timezone.utc).timestamp())}-{uuid.uuid4().hex[:6]}"
     alert = {
         "alert_id": alert_id,
         "device_id": device_id,
@@ -55,6 +57,7 @@ async def simulate_replay_attack():
         "timestamp": now_iso,
     }
     _DETECTED_ALERTS.append(alert)
+    await firestore_service.publish_security_alert(alert)
 
     # Log into audit chain
     security_manager._record_security_incident(
@@ -84,7 +87,7 @@ async def simulate_ciphertext_tampering():
     """Simulates MITM bit-flip in AES-256-GCM ciphertext to test authentication tag verification."""
     device_id = "MED-DEV-INF-412C"
     now_iso = datetime.now(timezone.utc).isoformat()
-    alert_id = f"ALT-MITM-{int(datetime.now(timezone.utc).timestamp())}"
+    alert_id = f"ALT-MITM-{int(datetime.now(timezone.utc).timestamp())}-{uuid.uuid4().hex[:6]}"
     incident_desc = f"AES-256-GCM authentication tag mismatch: 128-bit MAC validation failed for {device_id}"
 
     alert = {
@@ -96,6 +99,7 @@ async def simulate_ciphertext_tampering():
         "timestamp": now_iso,
     }
     _DETECTED_ALERTS.append(alert)
+    await firestore_service.publish_security_alert(alert)
 
     security_manager._record_security_incident(
         "MITM_CIPHERTEXT_TAMPERING",
@@ -124,7 +128,7 @@ async def simulate_fake_device():
     """Simulates an unregistered rogue device attempting to initiate PQC session handshake."""
     device_id = "ROGUE-DEVICE-SPOOF-X99"
     now_iso = datetime.now(timezone.utc).isoformat()
-    alert_id = f"ALT-SPOOF-{int(datetime.now(timezone.utc).timestamp())}"
+    alert_id = f"ALT-SPOOF-{int(datetime.now(timezone.utc).timestamp())}-{uuid.uuid4().hex[:6]}"
     incident_desc = f"Unregistered device {device_id} attempted ML-KEM-768 handshake without public key certificate"
 
     alert = {
@@ -136,6 +140,7 @@ async def simulate_fake_device():
         "timestamp": now_iso,
     }
     _DETECTED_ALERTS.append(alert)
+    await firestore_service.publish_security_alert(alert)
 
     security_manager._record_security_incident(
         "UNREGISTERED_DEVICE_SPOOFING",
@@ -164,7 +169,7 @@ async def simulate_unauthorized_command():
     """Simulates an unprivileged clinician role attempting an administrative device revocation."""
     user = "clinician-test-01"
     now_iso = datetime.now(timezone.utc).isoformat()
-    alert_id = f"ALT-RBAC-{int(datetime.now(timezone.utc).timestamp())}"
+    alert_id = f"ALT-RBAC-{int(datetime.now(timezone.utc).timestamp())}-{uuid.uuid4().hex[:6]}"
     incident_desc = f"Clinician user '{user}' attempted administrative firmware signing without ADMIN role"
 
     alert = {
@@ -176,6 +181,7 @@ async def simulate_unauthorized_command():
         "timestamp": now_iso,
     }
     _DETECTED_ALERTS.append(alert)
+    await firestore_service.publish_security_alert(alert)
 
     security_manager._record_security_incident(
         "RBAC_PRIVILEGE_ESCALATION",
@@ -204,7 +210,7 @@ async def simulate_firmware_tampering():
     """Simulates deploying a modified firmware update with an invalid SHA-256 fingerprint."""
     firmware_name = "SecureMed-RTOS-Patch-v2.4.1"
     now_iso = datetime.now(timezone.utc).isoformat()
-    alert_id = f"ALT-FW-{int(datetime.now(timezone.utc).timestamp())}"
+    alert_id = f"ALT-FW-{int(datetime.now(timezone.utc).timestamp())}-{uuid.uuid4().hex[:6]}"
     incident_desc = f"Firmware hash mismatch for {firmware_name}: SHA-256 binary fingerprint altered"
 
     alert = {
@@ -216,6 +222,7 @@ async def simulate_firmware_tampering():
         "timestamp": now_iso,
     }
     _DETECTED_ALERTS.append(alert)
+    await firestore_service.publish_security_alert(alert)
 
     security_manager._record_security_incident(
         "FIRMWARE_TAMPERING_DETECTED",
@@ -244,7 +251,7 @@ async def simulate_rate_limit():
     """Simulates high-frequency telemetry flooding to test rate limiting and resource protection."""
     device_id = "MED-DEV-VENT-901B"
     now_iso = datetime.now(timezone.utc).isoformat()
-    alert_id = f"ALT-FLOOD-{int(datetime.now(timezone.utc).timestamp())}"
+    alert_id = f"ALT-FLOOD-{int(datetime.now(timezone.utc).timestamp())}-{uuid.uuid4().hex[:6]}"
     incident_desc = f"Packet flood detected from {device_id}: Rate exceeded 100 packets/second"
 
     alert = {
@@ -256,6 +263,7 @@ async def simulate_rate_limit():
         "timestamp": now_iso,
     }
     _DETECTED_ALERTS.append(alert)
+    await firestore_service.publish_security_alert(alert)
 
     security_manager._record_security_incident(
         "RATE_LIMIT_EXCEEDED",

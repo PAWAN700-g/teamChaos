@@ -23,41 +23,50 @@ Modern hospital networks host thousands of connected Internet of Medical Things 
 
 ---
 
-## 🏗️ Monorepo Architecture
+## 🏗️ Monorepo Architecture & Integration
+
+```
+Architecture Flow:
+Flutter Client  ──(Bearer Firebase ID Token)──>  FastAPI Gateway (Trusted Authority)
+     │                                                   │
+     │                                     ┌─────────────┴─────────────┐
+(Listens to authorized                     │                           │
+ Firestore Collections)            Firebase Admin SDK           PQC Security Engine
+     ▲                                     │                   (ML-KEM-768, ML-DSA-65)
+     │                                     ▼                           ▲
+     └───────────── Cloud Firestore ───────┘                           │
+                     (Verified Telemetry, Alerts,              (AES-256-GCM Telemetry)
+                      Device Fleet, Profiles)                          │
+                                                                       │
+                                                            Medical Device Simulator
+                                                             (ECG, Heart Rate, SpO2)
+```
 
 ```
 securemed-iot/
-├── frontend/             # Flutter + Dart + Material 3 Clinical Dashboard
-│   ├── lib/              # Application entrypoint & UI components
-│   ├── test/             # Flutter widget test suite
-│   ├── pubspec.yaml      # Flutter package specifications
+├── frontend/             # Flutter + Dart + Material 3 Clinical Dashboard (9 Screens)
+│   ├── lib/              # Application entrypoint, Repositories, Streams & UI
+│   ├── test/             # Flutter widget test suite (19 test cases)
+│   ├── pubspec.yaml      # Flutter package specifications (Dio, Provider, Firebase)
 │   └── .env.example      # Frontend environment template
-├── backend/              # Python + FastAPI Gateway & PQC Engine
+├── backend/              # Python + FastAPI Gateway, PQC Engine & Firestore Service
 │   ├── app/
-│   │   ├── core/         # Config & PQC Cryptographic Engine (ML-KEM, ML-DSA)
-│   │   └── api/v1/       # REST & WebSocket endpoints (Health, Crypto, Devices)
-│   ├── tests/            # Pytest suite for API and crypto primitives
-│   ├── requirements.txt  # Python pip dependencies
+│   │   ├── core/         # PQC Engine, Auth, Session Manager, Firestore Service
+│   │   └── api/v1/       # REST endpoints (Health, Crypto, Devices, Telemetry, Simulation)
+│   ├── tests/            # Pytest suite (24 test cases for Crypto, RBAC, Integration)
+│   ├── requirements.txt  # Python pip dependencies (firebase-admin, cryptography, etc.)
 │   ├── pyproject.toml    # Modern Python packaging configuration
 │   └── .env.example      # Backend environment template
 ├── device_simulator/     # Python Medical IoT Simulation Client
 │   ├── simulator.py      # Standalone CLI simulator for PQC device lifecycle
 │   ├── models.py         # Synthetic patient telemetry data models
 │   ├── config.py         # Simulator settings
-│   └── .env.example      # Device simulator environment template
+│   └── test_simulator.py # Simulator test suite (12 test cases)
 ├── docs/                 # System Architecture & Development Specifications
 │   ├── architecture.md   # Architectural design, crypto flows, threat model
-│   └── roadmap.md        # Phased development roadmap (Phases 1-7)
+│   └── roadmap.md        # Phased development roadmap
 ├── scripts/              # Developer convenience & automation scripts
-│   ├── run_backend.bat   # Windows Batch runner for FastAPI
-│   ├── run_backend.ps1   # PowerShell runner for FastAPI
-│   ├── run_frontend.bat  # Windows Batch runner for Flutter
-│   ├── run_frontend.ps1  # PowerShell runner for Flutter
-│   ├── run_simulator.bat # Windows Batch runner for Device Simulator
-│   ├── run_simulator.ps1 # PowerShell runner for Device Simulator
-│   ├── run_all_tests.bat # Windows Batch unified test runner
-│   └── run_all_tests.ps1 # PowerShell unified test runner
-├── .env.example          # Monorepo-level environment variable template
+├── firestore.rules       # Cloud Firestore Security Rules (Zero-Trust RBAC & Lockdown)
 ├── .gitignore            # Git ignore rules for Python, Flutter, and credentials
 └── README.md             # Project documentation (this file)
 ```
@@ -154,11 +163,21 @@ powershell -ExecutionPolicy Bypass -File scripts/run_all_tests.ps1
 
 Or run individually:
 ```bash
-# Backend & Simulator tests (31 test cases verifying PQC, replay, and telemetry):
-cd securemed-iot
-backend\.venv\Scripts\python -m pytest backend/tests device_simulator/test_simulator.py -v
+# Run All Test Suites (55 tests: 24 backend + 12 simulator + 19 frontend):
+powershell -ExecutionPolicy Bypass -File scripts/run_all_tests.ps1
+```
 
-# Frontend Flutter tests (11 test cases verifying responsive UI, tabs, and auth):
+Or run individually:
+```bash
+# Backend Pytest (24 test cases verifying PQC, RBAC, and Firestore Integration):
+cd securemed-iot/backend
+.\.venv\Scripts\python -m pytest -v
+
+# Device Simulator Pytest (12 test cases verifying synthetic telemetry & attacks):
+cd securemed-iot/device_simulator
+..\backend\.venv\Scripts\python -m pytest -v
+
+# Frontend Flutter tests (19 test cases verifying 9-screen Material 3 UI & streams):
 cd securemed-iot/frontend
 flutter test
 ```
@@ -173,64 +192,90 @@ flutter test
 | **DSA** | NIST FIPS 204 (ML-DSA-65) | 1,952 B (pub) / 3,309 B (sig) | Quantum-safe mutual device authentication |
 | **KDF** | RFC 5869 (HKDF-SHA-256) | 256-bit symmetric key | Derivation of ephemeral telemetry keys |
 | **AEAD** | NIST SP 800-38D (AES-256-GCM) | 256-bit key, 96-bit nonce | High-speed authenticated stream encryption |
+| **Hash Chain** | SHA-256 | 256-bit digest | Tamper-evident ledger & block chain verification |
 
 ---
 
 ## 🔥 Firebase & Cloud Firestore Integration
 
-SecureMed IoT integrates **Firebase Authentication** for identity management and **Cloud Firestore** for secure data persistence with role-based access control (RBAC).
+SecureMed IoT establishes a zero-trust post-quantum security model integrating **Firebase Authentication** for identity management, **Cloud Firestore** for data storage, and **FastAPI** as the central security authority.
 
-### 1. Security Architecture & Principles
-- **Zero-Trust Role Enforcement**: User roles are never trusted from Flutter client code alone. All authorization is validated via Firestore Security Rules and verified in backend endpoints via the Firebase Admin SDK.
-- **Admin Self-Assignment Prevention**: Users can never assign themselves the `admin` role upon registration. All self-registered accounts default to an unprivileged role (`doctor` or `security_analyst`). Elevating an account to `admin` requires modification by an existing system administrator.
+### 1. Security Architecture & Invariants
+- **Backend Security Authority**: FastAPI is the single source of truth for cryptographic validation. Device telemetry is decrypted and validated (PQC signature, sequence monotonicity, timestamp freshness, and GCM tag) **before** it is published to Firestore.
+- **Client Write Lockdown**: Flutter clients can **never** write directly to `/telemetry`, `/security_alerts`, or `/dashboard_summaries` (`allow write: if false;`). Only the trusted backend service using the Firebase Admin SDK writes verified telemetry and detection alerts.
+- **Firebase Admin SDK Isolation**: The Firebase Admin SDK and service-account private keys reside strictly in the backend gateway environment. **No service account keys are ever bundled or stored in the Flutter mobile application.**
+- **Server-Side Role Authority**: FastAPI verifies caller roles against server-side Firestore records (`/users/{uid}`), preventing client-tampered custom claims or stale tokens from elevating privileges.
+- **Doctor-Scoped Access**: Clinicians can only read device records and telemetry streams for devices explicitly assigned to them (`assignedDoctorId`, `assignedDoctorUids`, or user `assignedDeviceIds`). Cybersecurity analysts and administrators maintain global fleet visibility.
 - **Cryptographic Key Isolation**: Firestore Security Rules strictly prohibit storing cryptographic private keys (`privateKey`, `private_key`, `secretKey`, etc.) in the database.
-- **Immutable Audit Trail**: Telemetry packets and audit events are strictly append-only. Firestore Security Rules deny `update` and `delete` operations on `/telemetry` and `/audit_events`.
+- **Immutable Audit Trail**: Audit events and telemetry packets are strictly permanent. Update and delete operations are denied on `/telemetry`, `/security_alerts`, and `/audit_events`.
 
 ### 2. Firestore Collection Schemas
 
 | Collection | Document ID | Key Fields | Access Controls |
 | :--- | :--- | :--- | :--- |
-| **`users`** | `{userId}` (auth.uid) | `uid`, `email`, `displayName`, `role` (`admin`, `doctor`, `security_analyst`), `createdAt`, `updatedAt` | Read: Self + Admin/SecOps. Create: Self (no admin). Update: Self (role immutable for non-admin). Delete: Admin only. |
-| **`devices`** | `{deviceId}` | `deviceId`, `deviceType`, `status`, `dsaPublicKeyB64`, `lastHeartbeat`, `registeredAt` | Read: Authenticated users. Write: Admin & SecOps only. Private keys strictly forbidden. |
-| **`telemetry`** | `{telemetryId}` | `deviceId`, `timestamp`, `isEncrypted`, `ciphertextPreview`, `syntheticVitals`, `signatureB64` | Read: Authenticated users. Create: Ingestion service / Admin / SecOps. Updates & Deletes permanently denied. |
-| **`security_alerts`** | `{alertId}` | `alertId`, `deviceId`, `timestamp`, `severity` (`info`, `warning`, `critical`), `attackType`, `description`, `resolved` | Read: All authenticated staff. Create: Authenticated. Update/Acknowledge: SecOps & Admin only. Delete: Admin only. |
-| **`audit_events`** | `{eventId}` | `eventId`, `timestamp`, `eventType`, `actorUid`, `actorRole`, `details` | Read: Admin & SecOps only. Create: Authenticated (verified actor UID). Append-only immutability. |
+| **`users`** | `{userId}` (auth.uid) | `uid`, `email`, `displayName`, `role` (`admin`, `doctor`, `security_analyst`), `assignedDeviceIds`, `createdAt`, `updatedAt` | Read: Self + Admin. Create: Self (unprivileged roles only). Update: Self (role immutable for non-admin). Delete: Admin only. |
+| **`devices`** | `{deviceId}` | `deviceId`, `deviceType`, `status`, `dsaPublicKeyB64`, `assignedDoctorId`, `assignedDoctorUids`, `lastSeen`, `registeredAt` | Read: Assigned Doctor, Security Analyst, Admin. Write: Admin & Security Analyst only. Private keys forbidden. |
+| **`telemetry`** | `{telemetryId}` | `deviceId`, `device_id`, `vitals`, `timestamp`, `pqc_signature_verified`, `is_simulated`, `published_at` | Read: Assigned Doctor, Security Analyst, Admin. **Write: Strictly backend authority only (`allow write: if false;`).** |
+| **`security_alerts`** | `{alertId}` | `alertId`, `deviceId`, `severity` (`info`, `warning`, `critical`), `attackType`, `description`, `timestamp`, `resolved` | Read: Security Analyst & Admin only. **Write: Strictly backend authority only (`allow write: if false;`).** |
+| **`dashboard_summaries`** | `current` | `total_devices`, `online_devices`, `offline_devices`, `active_alerts`, `latest_heart_rate`, `latest_spo2`, `last_updated`, `is_simulated` | Read: All authenticated staff. **Write: Strictly backend authority only (`allow write: if false;`).** |
+| **`audit_events`** | `{eventId}` | `eventId`, `timestamp`, `eventType`, `actorUid`, `actorRole`, `details` | Read: Admin & Security Analyst. Create: Authenticated (verified actor UID). Append-only immutability. |
 
-### 3. Deploying Firestore Security Rules
+---
 
-To deploy the security rules to your Firebase project:
+## 🛠️ Step-by-Step Setup Guide
 
-```bash
-cd securemed-iot
-
-# Log in to Firebase CLI (if not already logged in)
-firebase login
-
-# Select or switch to your Firebase project
-firebase use <your-firebase-project-id>
-
-# Deploy rules
-firebase deploy --only firestore:rules
-```
-
-Or test locally using the Firebase Local Emulator Suite:
-```bash
-firebase emulators:start --only firestore,auth
-```
-
-### 4. Configuring FlutterFire
-
-To connect a live Firebase project to the Flutter frontend:
-1. Install FlutterFire CLI: `dart pub global activate flutterfire_cli`
-2. Run configuration in `securemed-iot/frontend`:
+### Mode A: Zero-Config Local Prototype (Ready Immediately)
+Both the backend and Flutter frontend include built-in zero-config mock services that run instantly without requiring a GCP or Firebase cloud account:
+1. **Start Backend**:
+   ```bash
+   cd securemed-iot/backend
+   .\.venv\Scripts\python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+   ```
+2. **Start Flutter App**:
    ```bash
    cd securemed-iot/frontend
-   flutterfire configure --project=<your-firebase-project-id>
+   flutter run -d chrome    # or: flutter run -d android
    ```
-3. When running in offline or test mode without live Firebase credentials, the application automatically falls back to `MockAuthService` with simulated demo accounts:
+3. **Log in with seeded accounts**:
    - **Doctor**: `doctor@hospital.local` / `Password123!`
    - **Security Analyst**: `analyst@hospital.local` / `Password123!`
    - **Administrator**: `admin@hospital.local` / `Password123!`
+
+---
+
+### Mode B: Production Firebase & Cloud Firestore Setup
+
+#### 1. Backend Firebase Admin Configuration
+1. Go to the [Firebase Console](https://console.firebase.google.com/) -> **Project Settings** -> **Service accounts**.
+2. Click **Generate new private key** and download the JSON file.
+3. Save the JSON file into a secure path outside of public version control (e.g., `securemed-iot/backend/service-account.json`).
+4. Configure in `securemed-iot/backend/.env`:
+   ```env
+   FIREBASE_CREDENTIALS_PATH=service-account.json
+   FIREBASE_PROJECT_ID=<your-firebase-project-id>
+   ```
+
+#### 2. Deploy Firestore Security Rules
+```bash
+cd securemed-iot
+firebase login
+firebase use <your-firebase-project-id>
+firebase deploy --only firestore:rules
+```
+
+#### 3. Configure Flutter App for Firebase
+```bash
+cd securemed-iot/frontend
+dart pub global activate flutterfire_cli
+flutterfire configure --project=<your-firebase-project-id>
+```
+
+#### 4. Run the Medical Device Fleet Simulator
+```bash
+cd securemed-iot/device_simulator
+..\backend\.venv\Scripts\python simulator.py --devices all --interval 4.0
+```
+Telemetry will be post-quantum encrypted, signed with ML-DSA-65, decrypted by FastAPI, published to Cloud Firestore, and streamed live to the Flutter Material 3 Dashboard!
 
 ---
 

@@ -8,6 +8,8 @@ from fastapi import Depends, HTTPException, Header, status
 from typing import Optional, Dict, Any
 import os
 
+from app.core.firestore_service import firestore_service
+
 try:
     import firebase_admin
     from firebase_admin import auth, credentials
@@ -52,11 +54,16 @@ async def get_current_user(authorization: Optional[str] = Header(None)) -> Dict[
     if _FIREBASE_ADMIN_AVAILABLE and firebase_admin._apps:
         try:
             decoded_token = auth.verify_id_token(token)
+            uid = decoded_token.get("uid")
+            # Enforce Requirement 3: Check user role using trusted server-side information
+            server_role = await firestore_service.get_user_role(uid)
+            effective_role = server_role or decoded_token.get("role", "doctor")
             return {
-                "uid": decoded_token.get("uid"),
+                "uid": uid,
                 "email": decoded_token.get("email", ""),
-                "role": decoded_token.get("role", "doctor"),
+                "role": effective_role,
                 "token_claims": decoded_token,
+                "role_source": "firestore_server_record" if server_role else "token_claims",
             }
         except Exception as e:
             raise HTTPException(
@@ -65,15 +72,25 @@ async def get_current_user(authorization: Optional[str] = Header(None)) -> Dict[
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
-    # Prototype / Test token fallback (e.g. Bearer mock-token-doctor)
+    # Prototype / Test token fallback (e.g. Bearer mock-doctor, Bearer mock-doctor-token, Bearer mock-admin)
     if token.startswith("mock-"):
-        parts = token.split("-")
-        role = parts[1] if len(parts) > 1 else "doctor"
+        t_lower = token.lower()
+        if "admin" in t_lower:
+            role = "admin"
+        elif "analyst" in t_lower or "security" in t_lower:
+            role = "security_analyst"
+        else:
+            role = "doctor"
+
+        uid = f"user-{role}-001"
+        server_role = await firestore_service.get_user_role(uid)
+        effective_role = server_role or role
         return {
-            "uid": f"user-{role}-001",
+            "uid": uid,
             "email": f"{role}@hospital.local",
-            "role": role,
+            "role": effective_role,
             "notice": "Mock token verified in prototype environment",
+            "role_source": "firestore_server_record" if server_role else "mock_token",
         }
 
     # Development fallback

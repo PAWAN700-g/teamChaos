@@ -11,6 +11,8 @@ from contextlib import asynccontextmanager
 from app.core.config import settings
 from app.api.v1.router import api_router
 from app.core.session_manager import security_manager
+from app.core.auth import init_firebase_admin
+from app.core.firestore_service import firestore_service
 
 
 @asynccontextmanager
@@ -19,7 +21,16 @@ async def lifespan(app: FastAPI):
     print(f"[{settings.PROJECT_NAME}] Starting Post-Quantum Gateway...")
     print(f"[{settings.PROJECT_NAME}] PQC Algorithms: {settings.PQC_ALGORITHM_KEM}, {settings.PQC_ALGORITHM_DSA}")
     print(f"[{settings.PROJECT_NAME}] Prototype disclaimer: Synthetic patient data only.")
+
+    # Initialize Firebase Admin & Firestore Service (Backend Authority)
+    init_firebase_admin(settings.FIREBASE_CREDENTIALS_PATH)
+    firestore_service.initialize(settings.FIREBASE_CREDENTIALS_PATH)
+
     security_manager.seed_default_devices()
+    # Sync default fleet into Firestore
+    for dev_id, dev_rec in security_manager.devices.items():
+        await firestore_service.publish_device(dev_id, dev_rec.to_dict())
+
     yield
     print(f"[{settings.PROJECT_NAME}] Shutting down...")
 

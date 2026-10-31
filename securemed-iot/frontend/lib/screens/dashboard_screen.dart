@@ -7,6 +7,7 @@ import '../models/telemetry_model.dart';
 import '../models/security_alert_model.dart';
 import '../repositories/device_repository.dart';
 import '../repositories/telemetry_repository.dart';
+import '../services/firestore_stream_service.dart';
 import 'tabs/dashboard_tab.dart';
 import 'tabs/devices_tab.dart';
 import 'tabs/security_center_tab.dart';
@@ -26,6 +27,7 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   final DeviceRepository _deviceRepo = DeviceRepository();
   final TelemetryRepository _telemetryRepo = TelemetryRepository();
+  late final FirestoreStreamService _firestoreStreamService;
 
   late int _currentTabIndex;
   bool _isLoading = false;
@@ -35,22 +37,48 @@ class _DashboardScreenState extends State<DashboardScreen> {
   List<DeviceModel> _devices = [];
   List<TelemetryModel> _telemetryStream = [];
   List<SecurityAlertModel> _securityAlerts = [];
-  Timer? _pollingTimer;
+  StreamSubscription? _telemetrySub;
+  StreamSubscription? _alertsSub;
+  StreamSubscription? _devicesSub;
 
   @override
   void initState() {
     super.initState();
     _currentTabIndex = widget.initialTabIndex;
+    _firestoreStreamService = FirestoreStreamService();
     _refreshAllData();
-    // Background polling every 12 seconds to keep live vitals updated
-    _pollingTimer = Timer.periodic(const Duration(seconds: 12), (_) {
-      if (mounted) _pollTelemetrySilently();
+
+    // Attach real-time Firestore listeners for verified telemetry, alerts, and devices
+    _telemetrySub = _firestoreStreamService.streamVerifiedTelemetry().listen((telemetry) {
+      if (mounted && telemetry.isNotEmpty) {
+        setState(() {
+          _telemetryStream = telemetry;
+        });
+      }
+    });
+
+    _alertsSub = _firestoreStreamService.streamSecurityAlerts().listen((alerts) {
+      if (mounted && alerts.isNotEmpty) {
+        setState(() {
+          _securityAlerts = alerts;
+        });
+      }
+    });
+
+    _devicesSub = _firestoreStreamService.streamDevices().listen((devices) {
+      if (mounted && devices.isNotEmpty) {
+        setState(() {
+          _devices = devices;
+        });
+      }
     });
   }
 
   @override
   void dispose() {
-    _pollingTimer?.cancel();
+    _telemetrySub?.cancel();
+    _alertsSub?.cancel();
+    _devicesSub?.cancel();
     super.dispose();
   }
 

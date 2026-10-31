@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 
 from app.core.crypto_engine import RealPQCCryptoEngine
 from app.core.session_manager import security_manager
+from app.core.firestore_service import firestore_service
 
 router = APIRouter()
 
@@ -75,14 +76,16 @@ async def ingest_telemetry(req: TelemetryIngestRequest):
             )
         else:
             # Replay attack, nonce reuse, or freshness window violation
-            _DETECTED_ALERTS.append({
+            alert = {
                 "alert_id": f"ALT-{datetime.now(timezone.utc).timestamp()}",
                 "device_id": req.device_id,
                 "severity": "critical",
                 "attack_type": "REPLAY_OR_FRESHNESS_VIOLATION",
                 "description": reason,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
-            })
+            }
+            _DETECTED_ALERTS.append(alert)
+            await firestore_service.publish_security_alert(alert)
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=reason,
@@ -99,6 +102,16 @@ async def ingest_telemetry(req: TelemetryIngestRequest):
                 req.session_id,
                 "Provided AAD does not match the bound envelope header fields",
             )
+            alert = {
+                "alert_id": f"ALT-{datetime.now(timezone.utc).timestamp()}",
+                "device_id": req.device_id,
+                "severity": "critical",
+                "attack_type": "AAD_TAMPERING_DETECTED",
+                "description": "Provided AAD does not match the bound envelope header fields",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+            _DETECTED_ALERTS.append(alert)
+            await firestore_service.publish_security_alert(alert)
             raise ValueError("AAD parameter mismatch")
     except Exception:
         raise HTTPException(
@@ -124,6 +137,7 @@ async def ingest_telemetry(req: TelemetryIngestRequest):
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         _DETECTED_ALERTS.append(alert)
+        await firestore_service.publish_security_alert(alert)
         security_manager._record_security_incident(
             "MITM_CIPHERTEXT_TAMPERING",
             req.device_id,
@@ -154,6 +168,7 @@ async def ingest_telemetry(req: TelemetryIngestRequest):
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         _DETECTED_ALERTS.append(alert)
+        await firestore_service.publish_security_alert(alert)
         security_manager._record_security_incident(
             "ML_DSA_SIGNATURE_VERIFICATION_FAILURE",
             req.device_id,
@@ -180,14 +195,16 @@ async def ingest_telemetry(req: TelemetryIngestRequest):
     spo2 = vitals.get("spo2_percent", 98)
     if hr > 170 or hr < 40 or spo2 < 85:
         tampering = True
-        _DETECTED_ALERTS.append({
+        anomaly_alert = {
             "alert_id": f"ALT-{datetime.now(timezone.utc).timestamp()}",
             "device_id": req.device_id,
             "severity": "warning",
             "attack_type": "PHYSIOLOGICAL_ANOMALY_INJECTION",
             "description": f"Extreme vital anomaly: HR {hr} bpm, SpO2 {spo2}%.",
             "timestamp": datetime.now(timezone.utc).isoformat(),
-        })
+        }
+        _DETECTED_ALERTS.append(anomaly_alert)
+        await firestore_service.publish_security_alert(anomaly_alert)
 
     record = {
         "device_id": req.device_id,
@@ -202,6 +219,9 @@ async def ingest_telemetry(req: TelemetryIngestRequest):
     _RECENT_TELEMETRY.append(record)
     if len(_RECENT_TELEMETRY) > 50:
         _RECENT_TELEMETRY.pop(0)
+
+    # Enforce Requirement 4: Authenticated & decrypted telemetry published to Firestore by backend
+    await firestore_service.publish_verified_telemetry(record)
 
     # Record tamper-evident audit log event
     security_manager._record_audit_event(

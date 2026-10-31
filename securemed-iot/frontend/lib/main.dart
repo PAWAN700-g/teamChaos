@@ -6,6 +6,7 @@ import 'firebase_options.dart';
 import 'services/auth_service.dart';
 import 'services/firebase_auth_service.dart';
 import 'services/mock_auth_service.dart';
+import 'services/api_service.dart';
 import 'providers/auth_provider.dart';
 import 'screens/auth_screen.dart';
 import 'screens/dashboard_screen.dart';
@@ -26,6 +27,8 @@ void main() async {
     debugPrint('[SecureMed IoT] Initializing MockAuthService for offline testing / prototype mode.');
     authService = MockAuthService(seedSampleUsers: true);
   }
+
+  ApiService.globalTokenProvider = () => authService.getIdToken();
 
   runApp(SecureMedApp(authService: authService));
 }

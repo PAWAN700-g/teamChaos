@@ -2,11 +2,15 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
 class ApiService {
+  /// Global provider for Firebase ID tokens across all API requests.
+  static Future<String?> Function()? globalTokenProvider;
+
   final Dio _dio;
   final Future<String?> Function()? _tokenProvider;
 
-  ApiService({Dio? dio, this._tokenProvider})
-      : _dio = dio ?? Dio() {
+  ApiService({Dio? dio, Future<String?> Function()? tokenProvider})
+      : _dio = dio ?? Dio(),
+        _tokenProvider = tokenProvider ?? globalTokenProvider {
     _initDio();
   }
 

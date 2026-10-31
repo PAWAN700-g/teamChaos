@@ -19,4 +19,7 @@ abstract class AuthService {
   Future<void> signOut();
 
   Future<UserProfile?> fetchUserProfile(String uid);
+
+  /// Retrieves the current user's Firebase ID token for authenticating FastAPI backend calls.
+  Future<String?> getIdToken([bool forceRefresh = false]);
 }

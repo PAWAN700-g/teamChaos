@@ -15,52 +15,81 @@ service cloud.firestore {
     //   - email: string (required, 3-254 chars, valid RFC 5321 email format)
     //   - displayName: string (required, 1-100 chars)
     //   - role: string (required, enum: 'admin' | 'doctor' | 'security_analyst', immutable for non-admins)
+    //   - assignedDeviceIds: list of strings (optional, max 100 items, device IDs, immutable for non-admins)
     //   - createdAt: timestamp (required, immutable)
     //   - updatedAt: timestamp (required)
     //
     // Collection: devices
-    // Document ID: {deviceId}
+    // Document ID: {deviceId} (strictly matches data.deviceId)
     // Fields:
     //   - deviceId: string (required, 1-64 chars, matches documentId, immutable)
     //   - deviceType: string (required, 1-100 chars)
     //   - status: string (required, 1-50 chars)
     //   - dsaPublicKeyB64: string (required, 10-5000 chars, ML-DSA-65 public key)
-    //   - lastHeartbeat: timestamp (required)
+    //   - assignedDoctorId: string (optional, 1-128 chars, doctor auth.uid)
+    //   - assignedDoctorUids: list of strings (optional, max 50 items, doctor auth.uids)
+    //   - lastHeartbeat: timestamp (optional)
     //   - registeredAt: timestamp (required, immutable)
+    //   - revokedAt: timestamp | string (optional)
+    //   - revocationReason: string (optional, 1-500 chars)
+    //   - lastSeen: timestamp | string (optional)
+    //   - isPqcSecured: bool (optional)
     //   * Anti-Leak Guard: Forbids privateKey, private_key, secretKey, secret_key.
     //
     // Collection: telemetry
     // Document ID: {telemetryId}
     // Fields:
     //   - deviceId: string (required, 1-64 chars)
-    //   - timestamp: timestamp (required)
-    //   - isEncrypted: bool (required)
-    //   - ciphertextPreview: string (required, 0-4096 chars)
-    //   - syntheticVitals: map (required, max 50 keys)
-    //   - signatureB64: string (required, 10-6000 chars, ML-DSA-65 signature)
-    //   * Immutability: Strictly append-only, updates and deletes permanently denied.
+    //   - timestamp: timestamp (optional)
+    //   - published_at: timestamp | string (optional)
+    //   - isEncrypted: bool (optional)
+    //   - ciphertextPreview: string (optional, 0-4096 chars)
+    //   - syntheticVitals: map (optional, max 50 keys)
+    //   - vitals: map (optional, max 50 keys)
+    //   - signatureB64: string (optional, 10-6000 chars, ML-DSA-65 signature)
+    //   - is_verified_by_backend: bool (optional)
+    //   - is_simulated: bool (optional)
+    //   * Security Invariant: Client writes completely forbidden (allow write: if false;).
+    //     Verified telemetry can ONLY be written by backend Firebase Admin SDK.
     //
     // Collection: security_alerts
-    // Document ID: {alertId}
+    // Document ID: {alertId} (strictly matches data.alertId)
     // Fields:
     //   - alertId: string (required, 1-64 chars, matches documentId, immutable)
     //   - deviceId: string (required, 1-64 chars, immutable)
-    //   - timestamp: timestamp (required, immutable)
+    //   - timestamp: timestamp (optional)
+    //   - published_at: timestamp | string (optional)
     //   - severity: string (required, enum: 'info' | 'warning' | 'critical')
     //   - attackType: string (required, 1-100 chars, immutable)
     //   - description: string (required, 1-1000 chars)
     //   - resolved: bool (required)
+    //   - detected_by: string (optional, 1-100 chars)
+    //   * Security Invariant: Client writes completely forbidden (allow write: if false;).
+    //     Security alerts can ONLY be written by backend detection authority.
+    //
+    // Collection: dashboard_summaries
+    // Document ID: {summaryId} (e.g. 'current')
+    // Fields:
+    //   - total_devices: number (optional)
+    //   - online_devices: number (optional)
+    //   - offline_devices: number (optional)
+    //   - active_alerts: number (optional)
+    //   - latest_heart_rate: number (optional)
+    //   - latest_spo2: number (optional)
+    //   - last_updated: string | timestamp (optional)
+    //   - is_simulated: bool (optional)
+    //   * Access: Read allowed for all authenticated users; client writes forbidden (allow write: if false;).
     //
     // Collection: audit_events
     // Document ID: {eventId}
     // Fields:
-    //   - eventId: string (required, 1-64 chars, matches documentId, immutable)
+    //   - eventId: string (required, 1-64 chars, immutable)
     //   - timestamp: timestamp (required)
     //   - eventType: string (required, 1-100 chars)
     //   - actorUid: string (required, 1-128 chars, matches request.auth.uid)
     //   - actorRole: string (required, 1-50 chars)
     //   - details: map (required, max 50 keys)
-    //   * Immutability: Strictly append-only, updates and deletes permanently denied.
+    //   * Security Invariant: Append-only audit trail; updates and deletes permanently denied.
     //
     // ===============================================================
 
@@ -73,10 +102,14 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-
     // Check if authenticated caller owns the document ID
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Check if authenticated caller owns document based on uid field
+    function isDocOwner() {
+      return isSignedIn() && request.auth.uid == resource.data.uid;
     }
 
     // Check if the user document exists in Firestore
@@ -93,7 +126,7 @@ service cloud.firestore {
     function hasRole(role) {
       return isSignedIn() && (
         (request.auth.token != null && 'role' in request.auth.token && request.auth.token.role == role) ||
-        (userExists() && getUserData().role == role)
+        (userExists() && 'role' in getUserData() && getUserData().role == role)
       );
     }
 
@@ -102,13 +135,17 @@ service cloud.firestore {
       return hasRole('admin');
     }
 
-    // Security Analyst role verification
+    // Attending Physician / Clinician role verification
+    function isDoctor() {
+      return hasRole('doctor');
+    }
+
+    // Cybersecurity Analyst role verification
     function isSecurityAnalyst() {
       return hasRole('security_analyst');
     }
 
-
-    // Email format validation
+    // Email format validation (RFC 5321 compliant)
     function isValidEmail(email) {
       return email is string &&
         email.size() >= 3 &&
@@ -116,6 +153,35 @@ service cloud.firestore {
         email.matches('^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$');
     }
 
+    // Check that immutable fields have not been modified during update
+    function areImmutableFieldsUnchanged(fields) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(fields);
+    }
+
+    // Check if the authenticated doctor is authorized for a specific device document
+    function isDoctorAssignedToDevice(deviceData, deviceId) {
+      return isDoctor() && (
+        ('assignedDoctorId' in deviceData && deviceData.assignedDoctorId == request.auth.uid) ||
+        ('assignedDoctorUids' in deviceData && deviceData.assignedDoctorUids is list && request.auth.uid in deviceData.assignedDoctorUids) ||
+        (userExists() && 'assignedDeviceIds' in getUserData() && getUserData().assignedDeviceIds is list && deviceId in getUserData().assignedDeviceIds)
+      );
+    }
+
+    // Check if the authenticated doctor is authorized for the device referenced by a telemetry document
+    function isDoctorAssignedToTelemetryDevice(deviceId) {
+      return isDoctor() && (
+        (userExists() && 'assignedDeviceIds' in getUserData() && getUserData().assignedDeviceIds is list && deviceId in getUserData().assignedDeviceIds) ||
+        (exists(/databases/$(database)/documents/devices/$(deviceId)) &&
+          (
+            ('assignedDoctorId' in get(/databases/$(database)/documents/devices/$(deviceId)).data &&
+             get(/databases/$(database)/documents/devices/$(deviceId)).data.assignedDoctorId == request.auth.uid) ||
+            ('assignedDoctorUids' in get(/databases/$(database)/documents/devices/$(deviceId)).data &&
+             get(/databases/$(database)/documents/devices/$(deviceId)).data.assignedDoctorUids is list &&
+             request.auth.uid in get(/databases/$(database)/documents/devices/$(deviceId)).data.assignedDoctorUids)
+          )
+        )
+      );
+    }
 
     // ===============================================================
     // Domain Validators
@@ -124,7 +190,7 @@ service cloud.firestore {
     // Validator for /users/{userId} documents
     function isValidUser(data, userId) {
       return data.keys().hasAll(['uid', 'email', 'displayName', 'role', 'createdAt', 'updatedAt']) &&
-        data.keys().hasOnly(['uid', 'email', 'displayName', 'role', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['uid', 'email', 'displayName', 'role', 'assignedDeviceIds', 'createdAt', 'updatedAt']) &&
         data.uid is string &&
         data.uid == userId &&
         data.uid.size() >= 1 &&
@@ -135,14 +201,19 @@ service cloud.firestore {
         data.displayName.size() <= 100 &&
         data.role is string &&
         data.role in ['admin', 'doctor', 'security_analyst'] &&
+        (!('assignedDeviceIds' in data) || (data.assignedDeviceIds is list && data.assignedDeviceIds.size() <= 100)) &&
         data.createdAt is timestamp &&
         data.updatedAt is timestamp;
     }
 
     // Validator for /devices/{deviceId} documents
     function isValidDevice(data, deviceId) {
-      return data.keys().hasAll(['deviceId', 'deviceType', 'status', 'dsaPublicKeyB64', 'lastHeartbeat', 'registeredAt']) &&
-        data.keys().hasOnly(['deviceId', 'deviceType', 'status', 'dsaPublicKeyB64', 'lastHeartbeat', 'registeredAt']) &&
+      return data.keys().hasAll(['deviceId', 'deviceType', 'status', 'dsaPublicKeyB64', 'registeredAt']) &&
+        data.keys().hasOnly([
+          'deviceId', 'deviceType', 'status', 'dsaPublicKeyB64',
+          'lastHeartbeat', 'registeredAt', 'assignedDoctorId', 'assignedDoctorUids',
+          'revokedAt', 'revocationReason', 'lastSeen', 'isPqcSecured'
+        ]) &&
         data.deviceId is string &&
         data.deviceId == deviceId &&
         data.deviceId.size() >= 1 &&
@@ -156,8 +227,14 @@ service cloud.firestore {
         data.dsaPublicKeyB64 is string &&
         data.dsaPublicKeyB64.size() >= 10 &&
         data.dsaPublicKeyB64.size() <= 5000 &&
-        data.lastHeartbeat is timestamp &&
         data.registeredAt is timestamp &&
+        (!('lastHeartbeat' in data) || data.lastHeartbeat is timestamp) &&
+        (!('assignedDoctorId' in data) || (data.assignedDoctorId is string && data.assignedDoctorId.size() >= 1 && data.assignedDoctorId.size() <= 128)) &&
+        (!('assignedDoctorUids' in data) || (data.assignedDoctorUids is list && data.assignedDoctorUids.size() <= 50)) &&
+        (!('revokedAt' in data) || (data.revokedAt is timestamp || (data.revokedAt is string && data.revokedAt.size() <= 100))) &&
+        (!('revocationReason' in data) || (data.revocationReason is string && data.revocationReason.size() <= 500)) &&
+        (!('lastSeen' in data) || (data.lastSeen is timestamp || (data.lastSeen is string && data.lastSeen.size() <= 100))) &&
+        (!('isPqcSecured' in data) || data.isPqcSecured is bool) &&
         !('privateKey' in data) &&
         !('private_key' in data) &&
         !('secretKey' in data) &&
@@ -166,26 +243,33 @@ service cloud.firestore {
 
     // Validator for /telemetry/{telemetryId} documents
     function isValidTelemetry(data) {
-      return data.keys().hasAll(['deviceId', 'timestamp', 'isEncrypted', 'ciphertextPreview', 'syntheticVitals', 'signatureB64']) &&
-        data.keys().hasOnly(['deviceId', 'timestamp', 'isEncrypted', 'ciphertextPreview', 'syntheticVitals', 'signatureB64']) &&
+      return data.keys().hasAll(['deviceId']) &&
+        data.keys().hasOnly([
+          'deviceId', 'timestamp', 'published_at', 'isEncrypted',
+          'ciphertextPreview', 'syntheticVitals', 'vitals', 'signatureB64',
+          'is_verified_by_backend', 'is_simulated', 'telemetry_id'
+        ]) &&
         data.deviceId is string &&
         data.deviceId.size() >= 1 &&
         data.deviceId.size() <= 64 &&
-        data.timestamp is timestamp &&
-        data.isEncrypted is bool &&
-        data.ciphertextPreview is string &&
-        data.ciphertextPreview.size() <= 4096 &&
-        data.syntheticVitals is map &&
-        data.syntheticVitals.size() <= 50 &&
-        data.signatureB64 is string &&
-        data.signatureB64.size() >= 10 &&
-        data.signatureB64.size() <= 6000;
+        (!('timestamp' in data) || data.timestamp is timestamp) &&
+        (!('published_at' in data) || (data.published_at is timestamp || (data.published_at is string && data.published_at.size() <= 100))) &&
+        (!('isEncrypted' in data) || data.isEncrypted is bool) &&
+        (!('ciphertextPreview' in data) || (data.ciphertextPreview is string && data.ciphertextPreview.size() <= 4096)) &&
+        (!('syntheticVitals' in data) || (data.syntheticVitals is map && data.syntheticVitals.size() <= 50)) &&
+        (!('vitals' in data) || (data.vitals is map && data.vitals.size() <= 50)) &&
+        (!('signatureB64' in data) || (data.signatureB64 is string && data.signatureB64.size() >= 10 && data.signatureB64.size() <= 6000)) &&
+        (!('is_verified_by_backend' in data) || data.is_verified_by_backend is bool) &&
+        (!('is_simulated' in data) || data.is_simulated is bool);
     }
 
     // Validator for /security_alerts/{alertId} documents
     function isValidAlert(data, alertId) {
-      return data.keys().hasAll(['alertId', 'deviceId', 'timestamp', 'severity', 'attackType', 'description', 'resolved']) &&
-        data.keys().hasOnly(['alertId', 'deviceId', 'timestamp', 'severity', 'attackType', 'description', 'resolved']) &&
+      return data.keys().hasAll(['alertId', 'deviceId', 'severity', 'attackType', 'description', 'resolved']) &&
+        data.keys().hasOnly([
+          'alertId', 'deviceId', 'timestamp', 'published_at', 'severity',
+          'attackType', 'description', 'resolved', 'detected_by'
+        ]) &&
         data.alertId is string &&
         data.alertId == alertId &&
         data.alertId.size() >= 1 &&
@@ -193,7 +277,8 @@ service cloud.firestore {
         data.deviceId is string &&
         data.deviceId.size() >= 1 &&
         data.deviceId.size() <= 64 &&
-        data.timestamp is timestamp &&
+        (!('timestamp' in data) || data.timestamp is timestamp) &&
+        (!('published_at' in data) || (data.published_at is timestamp || (data.published_at is string && data.published_at.size() <= 100))) &&
         data.severity is string &&
         data.severity in ['info', 'warning', 'critical'] &&
         data.attackType is string &&
@@ -202,7 +287,8 @@ service cloud.firestore {
         data.description is string &&
         data.description.size() >= 1 &&
         data.description.size() <= 1000 &&
-        data.resolved is bool;
+        data.resolved is bool &&
+        (!('detected_by' in data) || (data.detected_by is string && data.detected_by.size() <= 100));
     }
 
     // Validator for /audit_events/{eventId} documents
@@ -210,7 +296,7 @@ service cloud.firestore {
       return data.keys().hasAll(['eventId', 'timestamp', 'eventType', 'actorUid', 'actorRole', 'details']) &&
         data.keys().hasOnly(['eventId', 'timestamp', 'eventType', 'actorUid', 'actorRole', 'details']) &&
         data.eventId is string &&
-        data.eventId == eventId &&
+        (data.eventId == eventId || eventId.size() >= 1) &&
         data.eventId.size() >= 1 &&
         data.eventId.size() <= 64 &&
         data.timestamp is timestamp &&
@@ -218,7 +304,6 @@ service cloud.firestore {
         data.eventType.size() >= 1 &&
         data.eventType.size() <= 100 &&
         data.actorUid is string &&
-        data.actorUid == request.auth.uid &&
         data.actorUid.size() >= 1 &&
         data.actorUid.size() <= 128 &&
         data.actorRole is string &&
@@ -234,22 +319,26 @@ service cloud.firestore {
 
     // 1. User Profiles (/users/{userId})
     match /users/{userId} {
-      // User can read their own profile; Admins and Security Analysts can read all profiles
-      allow read: if isOwner(userId) || isAdmin() || isSecurityAnalyst();
+      // Users can read only their authorized profile data (owner or admin)
+      allow read: if isOwner(userId) || isAdmin();
 
-      // Only admins can assign 'admin' role; ordinary users can only create their own profile with 'doctor' or 'security_analyst'
+      // Only admins can assign 'admin' role or assign devices; ordinary users can only create their own profile with 'doctor' or 'security_analyst' and without device assignments
       allow create: if isValidUser(request.resource.data, userId) && (
         isAdmin() ||
-        (isOwner(userId) && request.resource.data.role in ['doctor', 'security_analyst'])
+        (
+          isOwner(userId) &&
+          request.resource.data.role in ['doctor', 'security_analyst'] &&
+          (!('assignedDeviceIds' in request.resource.data) || request.resource.data.assignedDeviceIds.size() == 0)
+        )
       );
 
-      // Owner can update their own profile, but CANNOT change role; Admins can update any profile and modify roles
+      // Owner can update their own profile, but CANNOT modify role or assignedDeviceIds; Admins can update any profile and modify roles/devices
       allow update: if isValidUser(request.resource.data, userId) &&
         request.resource.data.uid == resource.data.uid &&
         request.resource.data.createdAt == resource.data.createdAt &&
         (
           isAdmin() ||
-          (isOwner(userId) && request.resource.data.role == resource.data.role)
+          (isOwner(userId) && areImmutableFieldsUnchanged(['role', 'assignedDeviceIds']))
         );
 
       // Only admins can delete user profiles
@@ -258,8 +347,8 @@ service cloud.firestore {
 
     // 2. Connected Medical Devices (/devices/{deviceId})
     match /devices/{deviceId} {
-      // Any authenticated user (admin, doctor, security_analyst) can read device status
-      allow read: if isSignedIn();
+      // Doctors can only read if assigned; Admins and security analysts can read all devices
+      allow read: if isAdmin() || isSecurityAnalyst() || isDoctorAssignedToDevice(resource.data, deviceId);
 
       // Only 'admin' or 'security_analyst' can register devices; strictly forbids private keys
       allow create: if (isAdmin() || isSecurityAnalyst()) &&
@@ -277,55 +366,47 @@ service cloud.firestore {
 
     // 3. Encrypted Telemetry Streams (/telemetry/{telemetryId})
     match /telemetry/{telemetryId} {
-      // Any authenticated user (doctor, security_analyst, admin) can read telemetry
-      allow read: if isSignedIn();
+      // Security analysts and admins can read all telemetry; doctors can only read telemetry for their assigned devices
+      allow read: if isAdmin() || isSecurityAnalyst() || isDoctorAssignedToTelemetryDevice(resource.data.deviceId);
 
-      // Only authenticated admin or security analyst (or backend gateway) can ingest telemetry
-      allow create: if (isAdmin() || isSecurityAnalyst()) &&
-        isValidTelemetry(request.resource.data);
-
-      // Telemetry records are strictly immutable and permanent
-      allow update: if false;
-      allow delete: if false;
+      // Clients cannot directly create trusted device telemetry; only backend Firebase Admin SDK can write
+      allow write: if false;
     }
 
     // 4. Cybersecurity Alerts (/security_alerts/{alertId})
     match /security_alerts/{alertId} {
-      // All authenticated users can view security alerts
-      allow read: if isSignedIn();
+      // Security analysts and admins can access authorized security event data
+      allow read: if isAdmin() || isSecurityAnalyst();
 
-      // Authenticated users and backend services can trigger security alerts
-      allow create: if isSignedIn() &&
-        isValidAlert(request.resource.data, alertId);
-
-      // Only 'security_analyst' or 'admin' can acknowledge or resolve alerts; core incident data is immutable
-      allow update: if (isAdmin() || isSecurityAnalyst()) &&
-        isValidAlert(request.resource.data, alertId) &&
-        request.resource.data.alertId == resource.data.alertId &&
-        request.resource.data.deviceId == resource.data.deviceId &&
-        request.resource.data.timestamp == resource.data.timestamp &&
-        request.resource.data.attackType == resource.data.attackType;
-
-      // Only 'admin' can delete alert records
-      allow delete: if isAdmin();
+      // Clients cannot directly create security alerts; only backend detection logic can write
+      allow write: if false;
     }
 
-    // 5. Immutable Audit Trail (/audit_events/{eventId})
+    // 5. System Dashboard Summaries (/dashboard_summaries/{summaryId})
+    match /dashboard_summaries/{summaryId} {
+      // All authenticated users can view system dashboard metrics
+      allow read: if isSignedIn();
+
+      // Only trusted backend services can write dashboard summaries
+      allow write: if false;
+    }
+
+    // 6. Immutable Audit Trail (/audit_events/{eventId})
     match /audit_events/{eventId} {
       // Only 'admin' and 'security_analyst' can audit system events
       allow read: if isAdmin() || isSecurityAnalyst();
 
-      // Authenticated users can record audit logs with enforced identity match
+      // Append-only audit trail: authenticated users can record audit logs with strictly verified caller identity; Admins can record system audit logs
       allow create: if isSignedIn() &&
         isValidAuditEvent(request.resource.data, eventId) &&
-        request.resource.data.actorUid == request.auth.uid;
+        (request.resource.data.actorUid == request.auth.uid || isAdmin());
 
-      // Audit logs are strictly append-only and immutable
+      // Audit logs are strictly append-only and permanent
       allow update: if false;
       allow delete: if false;
     }
 
-    // 6. Default Deny Fallback
+    // 7. Default Deny Fallback
     // Strictly deny read and write access on all undefined paths
     match /{document=**} {
       allow read, write: if false;

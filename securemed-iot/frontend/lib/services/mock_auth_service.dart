@@ -142,6 +142,12 @@ class MockAuthService implements AuthService {
     _authController.add(null);
   }
 
+  @override
+  Future<String?> getIdToken([bool forceRefresh = false]) async {
+    if (_currentUser == null) return null;
+    return 'mock-${_currentUser!.role.id}';
+  }
+
   void dispose() {
     _authController.close();
   }

@@ -4,6 +4,7 @@ from typing import List, Optional
 import base64
 
 from app.core.session_manager import security_manager
+from app.core.firestore_service import firestore_service
 
 router = APIRouter()
 
@@ -44,6 +45,7 @@ async def register_device(req: DeviceRegistrationRequest):
             device_type=req.device_type,
             dsa_public_key_raw=raw_key,
         )
+        await firestore_service.publish_device(req.device_id, record.to_dict())
         return DeviceResponse(**record.to_dict())
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -72,5 +74,6 @@ async def revoke_device(device_id: str, req: Optional[DeviceRevocationRequest] =
     success = security_manager.revoke_device(device_id, reason=reason)
     if not success:
         raise HTTPException(status_code=404, detail=f"Device '{device_id}' not found")
+    await firestore_service.mark_device_revoked(device_id, reason=reason)
     device = security_manager.get_device(device_id)
     return DeviceResponse(**device.to_dict())
