@@ -1,10 +1,11 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Header, status
 from pydantic import BaseModel, Field
 from typing import List, Optional
 import base64
 
 from app.core.session_manager import security_manager
 from app.core.firestore_service import firestore_service
+from app.core.auth import get_current_user
 
 router = APIRouter()
 
@@ -68,8 +69,20 @@ async def get_device(device_id: str):
 
 
 @router.post("/{device_id}/revoke", response_model=DeviceResponse, summary="Revoke Device Credentials")
-async def revoke_device(device_id: str, req: Optional[DeviceRevocationRequest] = None):
-    """Revokes device credentials and invalidates all active cryptographic sessions."""
+async def revoke_device(
+    device_id: str,
+    req: Optional[DeviceRevocationRequest] = None,
+    authorization: Optional[str] = Header(None),
+):
+    """Revokes device credentials and invalidates all active cryptographic sessions. Requires ADMIN role when authenticated."""
+    if authorization:
+        user = await get_current_user(authorization)
+        if user.get("role") != "admin":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Access denied: Admin privilege required to revoke devices. Current role: {user.get('role')}",
+            )
+
     reason = req.reason if req else "Security compromise or decommissioning"
     success = security_manager.revoke_device(device_id, reason=reason)
     if not success:

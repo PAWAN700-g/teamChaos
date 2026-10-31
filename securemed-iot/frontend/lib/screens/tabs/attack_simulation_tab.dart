@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../../models/simulation_result_model.dart';
 import '../../repositories/security_repository.dart';
@@ -113,10 +114,21 @@ class _AttackSimulationTabState extends State<AttackSimulationTab> {
           const SizedBox(height: 8),
 
           _buildAttackCard(
-            title: '1. Replay Attack',
+            title: '1. Device Impersonation',
+            badge: 'PQC DSA Identity',
+            badgeColor: Colors.deepOrange,
+            description: 'Unregistered device with invalid signature attempts authentication and telemetry transmission.',
+            endpoint: 'POST /api/v1/simulation/device-impersonation',
+            attackKey: 'DEVICE_IMPERSONATION',
+            onTap: () => _runSimulation('DEVICE_IMPERSONATION', _securityRepo.runDeviceImpersonationSimulation),
+          ),
+          const SizedBox(height: 10),
+
+          _buildAttackCard(
+            title: '2. Replay Attack',
             badge: 'Sequence Monotonicity',
             badgeColor: Colors.purple,
-            description: 'Injects a duplicated past sequence number to test packet freshness and replay windows.',
+            description: 'Captures and replays valid telemetry with identical session and sequence number.',
             endpoint: 'POST /api/v1/simulation/replay',
             attackKey: 'REPLAY',
             onTap: () => _runSimulation('REPLAY', _securityRepo.runReplayAttackSimulation),
@@ -124,10 +136,10 @@ class _AttackSimulationTabState extends State<AttackSimulationTab> {
           const SizedBox(height: 10),
 
           _buildAttackCard(
-            title: '2. Telemetry Tampering',
+            title: '3. Telemetry Tampering',
             badge: 'AES-GCM Auth Tag',
             badgeColor: Colors.red.shade700,
-            description: 'Flips ciphertext bytes in transit to test 128-bit GHASH authentication tag rejection.',
+            description: 'Flips ciphertext bytes in transit to test 128-bit GHASH authentication tag verification failure.',
             endpoint: 'POST /api/v1/simulation/tampering',
             attackKey: 'TAMPERING',
             onTap: () => _runSimulation('TAMPERING', _securityRepo.runTamperingSimulation),
@@ -135,32 +147,21 @@ class _AttackSimulationTabState extends State<AttackSimulationTab> {
           const SizedBox(height: 10),
 
           _buildAttackCard(
-            title: '3. Fake Device',
-            badge: 'ML-DSA-65 Identity',
-            badgeColor: Colors.deepOrange,
-            description: 'Simulates a rogue unregistered device attempting an unauthorized PQC handshake.',
-            endpoint: 'POST /api/v1/simulation/fake-device',
-            attackKey: 'FAKE_DEVICE',
-            onTap: () => _runSimulation('FAKE_DEVICE', _securityRepo.runFakeDeviceSimulation),
-          ),
-          const SizedBox(height: 10),
-
-          _buildAttackCard(
-            title: '4. Unauthorized Command',
-            badge: 'RBAC Access Guard',
+            title: '4. Unauthorized Access',
+            badge: 'RBAC Policy Guard',
             badgeColor: Colors.amber.shade900,
-            description: 'Attempts administrative firmware modification from an unprivileged clinician role.',
-            endpoint: 'POST /api/v1/simulation/unauthorized-command',
-            attackKey: 'UNAUTHORIZED_CMD',
-            onTap: () => _runSimulation('UNAUTHORIZED_CMD', _securityRepo.runUnauthorizedCommandSimulation),
+            description: 'Authenticated Doctor role attempts an Admin-only operation (HTTP 403 Forbidden).',
+            endpoint: 'POST /api/v1/simulation/unauthorized-access',
+            attackKey: 'UNAUTHORIZED_ACCESS',
+            onTap: () => _runSimulation('UNAUTHORIZED_ACCESS', _securityRepo.runUnauthorizedAccessSimulation),
           ),
           const SizedBox(height: 10),
 
           _buildAttackCard(
             title: '5. Firmware Tampering',
-            badge: 'FIPS 204 Attestation',
+            badge: 'FIPS 204 ML-DSA',
             badgeColor: Colors.blueGrey.shade800,
-            description: 'Uploads an OTA firmware update binary with an altered SHA-256 hash and invalid signature.',
+            description: 'Firmware package payload altered after signing, causing post-quantum signature verification failure.',
             endpoint: 'POST /api/v1/simulation/firmware-tampering',
             attackKey: 'FIRMWARE',
             onTap: () => _runSimulation('FIRMWARE', _securityRepo.runFirmwareTamperingSimulation),
@@ -168,13 +169,35 @@ class _AttackSimulationTabState extends State<AttackSimulationTab> {
           const SizedBox(height: 10),
 
           _buildAttackCard(
-            title: '6. Rate-Limit Test',
-            badge: 'Flood Defense',
+            title: '6. Rate-Limit Attack',
+            badge: 'Token Bucket Flood Defense',
             badgeColor: Colors.teal.shade800,
-            description: 'Simulates high-velocity packet transmission exceeding allowable rate thresholds.',
+            description: 'Controlled burst of requests exceeding threshold, triggering HTTP 429 Too Many Requests.',
             endpoint: 'POST /api/v1/simulation/rate-limit',
             attackKey: 'RATE_LIMIT',
             onTap: () => _runSimulation('RATE_LIMIT', _securityRepo.runRateLimitSimulation),
+          ),
+          const SizedBox(height: 10),
+
+          _buildAttackCard(
+            title: '7. Device Revocation',
+            badge: 'CRL Revocation Guard',
+            badgeColor: Colors.indigo.shade800,
+            description: 'Revoked test device attempts re-authentication and is rejected by the gateway.',
+            endpoint: 'POST /api/v1/simulation/device-revocation',
+            attackKey: 'DEVICE_REVOCATION',
+            onTap: () => _runSimulation('DEVICE_REVOCATION', _securityRepo.runDeviceRevocationSimulation),
+          ),
+          const SizedBox(height: 10),
+
+          _buildAttackCard(
+            title: '8. Audit Log Modification',
+            badge: 'SHA-256 Hash Chain',
+            badgeColor: Colors.brown.shade800,
+            description: 'Modifies an audit ledger record, triggering hash-chain integrity verification failure.',
+            endpoint: 'POST /api/v1/simulation/audit-modification',
+            attackKey: 'AUDIT_MODIFICATION',
+            onTap: () => _runSimulation('AUDIT_MODIFICATION', _securityRepo.runAuditModificationSimulation),
           ),
           const SizedBox(height: 24),
         ],
@@ -265,6 +288,10 @@ class _AttackSimulationTabState extends State<AttackSimulationTab> {
   }
 
   Widget _buildDetectionResultCard(SimulationResultModel result) {
+    final simulatedInputJson = result.simulatedInput.isNotEmpty
+        ? const JsonEncoder.withIndent('  ').convert(result.simulatedInput)
+        : '{}';
+
     return Container(
       decoration: BoxDecoration(
         color: const Color(0xFF0A192F),
@@ -294,7 +321,7 @@ class _AttackSimulationTabState extends State<AttackSimulationTab> {
               ),
               const SizedBox(width: 8),
               const Text(
-                'GATEWAY DETECTION RESULT',
+                'SECURITY VERIFICATION RESULT',
                 style: TextStyle(
                   color: Color(0xFF2DD4BF),
                   fontSize: 12,
@@ -322,12 +349,48 @@ class _AttackSimulationTabState extends State<AttackSimulationTab> {
             result.attackName,
             style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
           ),
+          const SizedBox(height: 10),
+
+          // Required 4 Core Parameters
+          _buildResultSection(
+            title: 'SIMULATED ATTACK INPUT',
+            content: simulatedInputJson,
+            isMonospace: true,
+            bgColor: const Color(0xFF0F172A),
+          ),
           const SizedBox(height: 8),
+
+          _buildResultSection(
+            title: 'BACKEND SECURITY MECHANISM',
+            content: result.securityMechanism,
+            textColor: const Color(0xFF38BDF8),
+          ),
+          const SizedBox(height: 8),
+
+          _buildResultSection(
+            title: 'EXPECTED RESULT',
+            content: result.expectedResult,
+            textColor: const Color(0xFFFDE047),
+          ),
+          const SizedBox(height: 8),
+
+          _buildResultSection(
+            title: 'ACTUAL RESULT',
+            content: result.actualResult,
+            textColor: const Color(0xFF4ADE80),
+          ),
+          const SizedBox(height: 12),
+
+          const Divider(color: Color(0xFF1E293B)),
+          const SizedBox(height: 6),
+
+          // Additional Telemetry & Audit Meta
           _buildResultItem('HTTP Status Code', '${result.statusCode} (Interception Verified)'),
           _buildResultItem('Defense Triggered', result.defenseTriggered),
           _buildResultItem('Mitigation Action', result.mitigationAction),
           if (result.incidentId != null)
             _buildResultItem('SIEM Incident ID', result.incidentId!),
+          _buildResultItem('Alert Generated', 'Logged to SIEM & Published to Firestore'),
           _buildResultItem('Audit Ledger Chained', result.incidentLogged ? 'Logged to SHA-256 chain' : 'Pending'),
           _buildResultItem('Timestamp', result.timestamp),
         ],
@@ -335,9 +398,51 @@ class _AttackSimulationTabState extends State<AttackSimulationTab> {
     );
   }
 
+  Widget _buildResultSection({
+    required String title,
+    required String content,
+    bool isMonospace = false,
+    Color? textColor,
+    Color? bgColor,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: bgColor ?? const Color(0xFF132238),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFF1E293B)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 0.6,
+              color: Color(0xFF94A3B8),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            content,
+            style: TextStyle(
+              fontSize: 11,
+              fontFamily: isMonospace ? 'monospace' : null,
+              color: textColor ?? const Color(0xFFE2E8F0),
+              height: 1.3,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildResultItem(String label, String value) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3.0),
+      padding: const EdgeInsets.symmetric(vertical: 2.5),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -351,7 +456,7 @@ class _AttackSimulationTabState extends State<AttackSimulationTab> {
           Expanded(
             child: Text(
               value,
-              style: const TextStyle(fontSize: 11, color: Color(0xFFE2E8F0), fontFamily: 'monospace'),
+              style: const TextStyle(fontSize: 11, color: Color(0xFFCBD5E1), fontFamily: 'monospace'),
             ),
           ),
         ],

@@ -17,12 +17,11 @@ import 'api_service.dart';
 /// cleanly returns empty streams without leaking timers.
 class FirestoreStreamService {
   final FirebaseFirestore? firestore;
-  final ApiService _apiService;
 
   FirestoreStreamService({
     this.firestore,
     ApiService? apiService,
-  }) : _apiService = apiService ?? ApiService();
+  });
 
   FirebaseFirestore? get _firestore => firestore;
 

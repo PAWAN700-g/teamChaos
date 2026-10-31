@@ -82,21 +82,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     super.dispose();
   }
 
-  Future<void> _pollTelemetrySilently() async {
-    try {
-      final snapshot = await _telemetryRepo.fetchLatestTelemetry();
-      if (mounted) {
-        setState(() {
-          _telemetryStream = snapshot.telemetryStream;
-          _securityAlerts = snapshot.securityAlerts;
-          _backendStatus = 'Online (ML-KEM-768) | Packets: ${snapshot.totalPacketsIngested}';
-        });
-      }
-    } catch (_) {
-      // Background silent poll ignore
-    }
-  }
-
   Future<void> _refreshAllData() async {
     setState(() {
       _isLoading = true;

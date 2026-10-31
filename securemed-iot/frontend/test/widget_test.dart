@@ -85,7 +85,7 @@ void main() {
     await tester.tap(find.text('Simulation'));
     await tester.pumpAndSettle();
     expect(find.text('Cybersecurity Attack Simulator'), findsOneWidget);
-    expect(find.text('1. Replay Attack'), findsOneWidget);
+    expect(find.text('1. Device Impersonation'), findsOneWidget);
 
     // 5. Tab 4: Audit Logs
     await tester.tap(find.text('Audit Logs'));

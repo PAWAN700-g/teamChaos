@@ -187,7 +187,7 @@ void main() {
       expect(find.text('UNREGISTERED_DEVICE_SPOOFING'), findsOneWidget);
     });
 
-    testWidgets('AttackSimulationTab renders all 6 simulation attack buttons', (WidgetTester tester) async {
+    testWidgets('AttackSimulationTab renders simulation attack scenarios', (WidgetTester tester) async {
       await tester.pumpWidget(
         const MaterialApp(
           home: Scaffold(
@@ -197,12 +197,12 @@ void main() {
       );
 
       expect(find.text('Cybersecurity Attack Simulator'), findsOneWidget);
-      expect(find.text('1. Replay Attack'), findsOneWidget);
-      expect(find.text('2. Telemetry Tampering'), findsOneWidget);
-      expect(find.text('3. Fake Device'), findsOneWidget);
-      expect(find.text('4. Unauthorized Command'), findsOneWidget);
+      expect(find.text('1. Device Impersonation'), findsOneWidget);
+      expect(find.text('2. Replay Attack'), findsOneWidget);
+      expect(find.text('3. Telemetry Tampering'), findsOneWidget);
+      expect(find.text('4. Unauthorized Access'), findsOneWidget);
       expect(find.text('5. Firmware Tampering'), findsOneWidget);
-      expect(find.text('6. Rate-Limit Test'), findsOneWidget);
+      expect(find.text('6. Rate-Limit Attack'), findsOneWidget);
     });
 
     testWidgets('AuditLogsTab renders hash-chain ledger view', (WidgetTester tester) async {

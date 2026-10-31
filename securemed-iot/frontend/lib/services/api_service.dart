@@ -162,6 +162,15 @@ class ApiService {
 
   // --- ATTACK SIMULATION ENDPOINTS ---
 
+  Future<Map<String, dynamic>> simulateDeviceImpersonation() async {
+    try {
+      final response = await _dio.post('/simulation/device-impersonation');
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw _handleDioError(e);
+    }
+  }
+
   Future<Map<String, dynamic>> simulateReplay() async {
     try {
       final response = await _dio.post('/simulation/replay');
@@ -180,23 +189,18 @@ class ApiService {
     }
   }
 
-  Future<Map<String, dynamic>> simulateFakeDevice() async {
+  Future<Map<String, dynamic>> simulateFakeDevice() => simulateDeviceImpersonation();
+
+  Future<Map<String, dynamic>> simulateUnauthorizedAccess() async {
     try {
-      final response = await _dio.post('/simulation/fake-device');
+      final response = await _dio.post('/simulation/unauthorized-access');
       return response.data as Map<String, dynamic>;
     } on DioException catch (e) {
       throw _handleDioError(e);
     }
   }
 
-  Future<Map<String, dynamic>> simulateUnauthorizedCommand() async {
-    try {
-      final response = await _dio.post('/simulation/unauthorized-command');
-      return response.data as Map<String, dynamic>;
-    } on DioException catch (e) {
-      throw _handleDioError(e);
-    }
-  }
+  Future<Map<String, dynamic>> simulateUnauthorizedCommand() => simulateUnauthorizedAccess();
 
   Future<Map<String, dynamic>> simulateFirmwareTampering() async {
     try {
@@ -210,6 +214,24 @@ class ApiService {
   Future<Map<String, dynamic>> simulateRateLimit() async {
     try {
       final response = await _dio.post('/simulation/rate-limit');
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw _handleDioError(e);
+    }
+  }
+
+  Future<Map<String, dynamic>> simulateDeviceRevocation() async {
+    try {
+      final response = await _dio.post('/simulation/device-revocation');
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw _handleDioError(e);
+    }
+  }
+
+  Future<Map<String, dynamic>> simulateAuditModification() async {
+    try {
+      final response = await _dio.post('/simulation/audit-modification');
       return response.data as Map<String, dynamic>;
     } on DioException catch (e) {
       throw _handleDioError(e);

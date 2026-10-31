@@ -378,6 +378,19 @@ class SecurityStateManager:
         self.incidents.append(record)
         self._record_audit_event("SECURITY_ALERT_TRIGGERED", device_id, record.to_dict())
 
+    def verify_audit_chain(self) -> Tuple[bool, str]:
+        """Cryptographically verifies the SHA-256 hash chaining of all audit entries."""
+        expected_prev = "GENESIS_SECUREMED_AUDIT_ROOT_00000000000000000000000000000000"
+        for i, entry in enumerate(self.audit_log_chain):
+            if entry["previous_hash"] != expected_prev:
+                return False, f"Broken link at block #{i + 1}: previous_hash mismatch"
+            payload = f"{entry['timestamp']}|{entry['event_type']}|{entry['device_id']}|{str(entry['details'])}".encode("utf-8")
+            recomputed = RealPQCCryptoEngine.compute_audit_chain_hash(expected_prev, payload)
+            if entry["entry_hash"] != recomputed:
+                return False, f"Hash mismatch at block #{i + 1}: expected {entry['entry_hash']} != computed {recomputed}"
+            expected_prev = entry["entry_hash"]
+        return True, "Chain intact"
+
 
 # Global singleton security state manager for the gateway
 security_manager = SecurityStateManager()
