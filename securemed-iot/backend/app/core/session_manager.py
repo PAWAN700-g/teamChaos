@@ -128,6 +128,19 @@ class SecurityStateManager:
     # Device Credential & Revocation Management
     # -------------------------------------------------------------
 
+    def seed_default_devices(self):
+        """Seed default hospital fleet devices with ML-DSA-65 keys."""
+        default_fleet = [
+            ("MED-DEV-ICU-701A", "Multi-parameter Vital Monitor"),
+            ("MED-DEV-INF-412C", "Continuous Infusion Controller"),
+            ("MED-DEV-VENT-901B", "Autonomous Respiratory Assist"),
+        ]
+        for dev_id, dev_type in default_fleet:
+            if dev_id not in self.devices:
+                _, pub = RealPQCCryptoEngine.generate_dsa_keypair()
+                pub_bytes = RealPQCCryptoEngine.serialize_dsa_public_key(pub)
+                self.register_device(dev_id, dev_type, pub_bytes)
+
     def register_device(
         self,
         device_id: str,

@@ -10,14 +10,16 @@ from contextlib import asynccontextmanager
 
 from app.core.config import settings
 from app.api.v1.router import api_router
+from app.core.session_manager import security_manager
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: Initialize PQC engine self-test
+    # Startup: Initialize PQC engine self-test and seed default fleet
     print(f"[{settings.PROJECT_NAME}] Starting Post-Quantum Gateway...")
     print(f"[{settings.PROJECT_NAME}] PQC Algorithms: {settings.PQC_ALGORITHM_KEM}, {settings.PQC_ALGORITHM_DSA}")
     print(f"[{settings.PROJECT_NAME}] Prototype disclaimer: Synthetic patient data only.")
+    security_manager.seed_default_devices()
     yield
     print(f"[{settings.PROJECT_NAME}] Shutting down...")
 
