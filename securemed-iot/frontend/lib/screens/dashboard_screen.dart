@@ -1,100 +1,136 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
-import '../services/api_service.dart';
-import 'tabs/fleet_tab.dart';
-import 'tabs/crypto_tab.dart';
-import 'tabs/threats_tab.dart';
-import 'tabs/audit_tab.dart';
+import '../models/device_model.dart';
+import '../models/telemetry_model.dart';
+import '../models/security_alert_model.dart';
+import '../repositories/device_repository.dart';
+import '../repositories/telemetry_repository.dart';
+import 'tabs/dashboard_tab.dart';
+import 'tabs/devices_tab.dart';
+import 'tabs/security_center_tab.dart';
+import 'tabs/attack_simulation_tab.dart';
+import 'tabs/audit_logs_tab.dart';
 import 'tabs/profile_tab.dart';
 
 class DashboardScreen extends StatefulWidget {
-  const DashboardScreen({super.key});
+  final int initialTabIndex;
+
+  const DashboardScreen({super.key, this.initialTabIndex = 0});
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  final ApiService _apiService = ApiService();
-  int _currentTabIndex = 0;
+  final DeviceRepository _deviceRepo = DeviceRepository();
+  final TelemetryRepository _telemetryRepo = TelemetryRepository();
 
-  bool _isConnecting = false;
-  String _backendStatus = 'Ready (Tap Sync to connect)';
-  List<Map<String, dynamic>> _liveTelemetry = [];
-  List<Map<String, dynamic>> _securityAlerts = [];
-  String _auditHeadHash = 'GENESIS_SECUREMED_AUDIT_ROOT_00000000000000000000000000000000';
-  bool _hasSynced = false;
+  late int _currentTabIndex;
+  bool _isLoading = false;
+  String _backendStatus = 'Ready (Syncing...)';
+  String? _errorMessage;
+
+  List<DeviceModel> _devices = [];
+  List<TelemetryModel> _telemetryStream = [];
+  List<SecurityAlertModel> _securityAlerts = [];
+  Timer? _pollingTimer;
 
   @override
   void initState() {
     super.initState();
-    _silentAutoConnect();
+    _currentTabIndex = widget.initialTabIndex;
+    _refreshAllData();
+    // Background polling every 12 seconds to keep live vitals updated
+    _pollingTimer = Timer.periodic(const Duration(seconds: 12), (_) {
+      if (mounted) _pollTelemetrySilently();
+    });
   }
 
-  void _silentAutoConnect() async {
+  @override
+  void dispose() {
+    _pollingTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _pollTelemetrySilently() async {
     try {
-      final telemetry = await _apiService.getLatestTelemetry();
-      final stream = (telemetry["telemetry_stream"] as List<dynamic>?)
-              ?.map((e) => e as Map<String, dynamic>)
-              .toList() ??
-          [];
-      final alerts = (telemetry["security_alerts"] as List<dynamic>?)
-              ?.map((e) => e as Map<String, dynamic>)
-              .toList() ??
-          [];
+      final snapshot = await _telemetryRepo.fetchLatestTelemetry();
       if (mounted) {
         setState(() {
-          _liveTelemetry = stream;
-          _securityAlerts = alerts;
-          _auditHeadHash = telemetry["audit_head_hash"] ?? _auditHeadHash;
-          if (stream.isNotEmpty) {
-            _hasSynced = true;
-            _backendStatus = 'Online | Ingested Packets: ${telemetry["total_packets_ingested"] ?? stream.length}';
-          }
+          _telemetryStream = snapshot.telemetryStream;
+          _securityAlerts = snapshot.securityAlerts;
+          _backendStatus = 'Online (ML-KEM-768) | Packets: ${snapshot.totalPacketsIngested}';
         });
       }
     } catch (_) {
-      // Offline fallback is expected for prototype demo mode
+      // Background silent poll ignore
     }
   }
 
-  void _checkBackendConnection() async {
+  Future<void> _refreshAllData() async {
     setState(() {
-      _isConnecting = true;
-      _backendStatus = 'Connecting to Gateway...';
+      _isLoading = true;
+      _errorMessage = null;
     });
 
     try {
-      final health = await _apiService.getHealth();
-      final telemetry = await _apiService.getLatestTelemetry();
+      final devicesFuture = _deviceRepo.fetchDevices();
+      final telemetryFuture = _telemetryRepo.fetchLatestTelemetry();
 
-      final stream = (telemetry["telemetry_stream"] as List<dynamic>?)
-              ?.map((e) => e as Map<String, dynamic>)
-              .toList() ??
-          [];
-      final alerts = (telemetry["security_alerts"] as List<dynamic>?)
-              ?.map((e) => e as Map<String, dynamic>)
-              .toList() ??
-          [];
+      final results = await Future.wait([
+        devicesFuture,
+        telemetryFuture,
+      ]);
+
+      final devices = results[0] as List<DeviceModel>;
+      final snapshot = results[1] as TelemetrySnapshot;
 
       if (mounted) {
         setState(() {
-          _isConnecting = false;
-          _hasSynced = true;
-          _liveTelemetry = stream;
-          _securityAlerts = alerts;
-          _auditHeadHash = telemetry["audit_head_hash"] ?? _auditHeadHash;
-          final kem = health["cryptography"]?["kem_algorithm"] ?? "ML-KEM-768";
-          final totalPackets = telemetry["total_packets_ingested"] ?? stream.length;
-          _backendStatus = 'Online ($kem) | Verified Packets: $totalPackets';
+          _isLoading = false;
+          _devices = devices;
+          _telemetryStream = snapshot.telemetryStream;
+          _securityAlerts = snapshot.securityAlerts;
+          _backendStatus = 'Online (ML-KEM-768) | Verified Packets: ${snapshot.totalPacketsIngested}';
         });
       }
     } catch (e) {
       if (mounted) {
         setState(() {
-          _isConnecting = false;
-          _backendStatus = 'Gateway Offline (${e.toString()})';
+          _isLoading = false;
+          _errorMessage = e.toString();
+          _backendStatus = 'Gateway Disconnected (${e.toString()})';
+          // Fallback pre-seeded mock devices if gateway is offline during initial load
+          if (_devices.isEmpty) {
+            _devices = [
+              DeviceModel(
+                deviceId: 'MED-DEV-ICU-701A',
+                deviceType: 'Multi-parameter Vital Monitor',
+                status: 'active',
+                isPqcSecured: true,
+                dsaPublicKeyB64: 'OC9MK6WkL+STLbefoc41kjbsUcAG2oDU1L34Gj65pzn+YLtFkCVeJCql+PoF8o5M...',
+                registeredAt: '2026-10-31T19:20:18Z',
+              ),
+              DeviceModel(
+                deviceId: 'MED-DEV-INF-412C',
+                deviceType: 'Continuous Infusion Controller',
+                status: 'active',
+                isPqcSecured: true,
+                dsaPublicKeyB64: 'UykzQUUgxiY79tVoyrPthwuB+z6iubWyMF9zQ0MM0pJ+nYe0vZGhg3lIC0804YYc...',
+                registeredAt: '2026-10-31T19:20:18Z',
+              ),
+              DeviceModel(
+                deviceId: 'MED-DEV-VENT-901B',
+                deviceType: 'Autonomous Respiratory Assist',
+                status: 'active',
+                isPqcSecured: true,
+                dsaPublicKeyB64: 'GMfY46phpcoy6SY+G47USyKF2ua+Ni5ktvrQIVJ4RfQwR1FwFhIqfEYKPTgHaaBL...',
+                registeredAt: '2026-10-31T19:20:18Z',
+              ),
+            ];
+          }
         });
       }
     }
@@ -112,45 +148,87 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
 
     final pages = [
-      FleetTab(
+      // 1. Dashboard Screen (Total, Online, Offline, Alerts, Latest HR, SpO2, Recent events, Live sync)
+      DashboardTab(
         user: user,
-        isConnecting: _isConnecting,
+        isLoading: _isLoading,
         backendStatus: _backendStatus,
-        onSyncBackend: _checkBackendConnection,
-        liveTelemetry: _liveTelemetry,
-        hasSynced: _hasSynced,
-      ),
-      const CryptoTab(),
-      ThreatsTab(
+        onRefresh: _refreshAllData,
+        devices: _devices,
+        telemetryStream: _telemetryStream,
         securityAlerts: _securityAlerts,
-        onRefresh: _checkBackendConnection,
+        onSelectDevice: (dev) {
+          setState(() => _currentTabIndex = 1);
+        },
       ),
-      AuditTab(
-        headHash: _auditHeadHash,
-        onRefresh: _checkBackendConnection,
+
+      // 2. Devices Screen (Device list, ID, type, online/offline, PQC status, last-seen, register/revoke)
+      DevicesTab(
+        user: user,
+        devices: _devices,
+        telemetryStream: _telemetryStream,
+        isLoading: _isLoading,
+        errorMessage: _errorMessage,
+        onRefresh: _refreshAllData,
       ),
-      ProfileTab(user: user),
+
+      // 3. Security Center Screen (Critical, High, Medium, Low alerts, alert details, history)
+      SecurityCenterTab(
+        securityAlerts: _securityAlerts,
+        isLoading: _isLoading,
+        onRefresh: _refreshAllData,
+      ),
+
+      // 4. Attack Simulation Screen (Replay, Tampering, Fake device, Unauthorized, Firmware, Rate-limit)
+      AttackSimulationTab(
+        onAttackCompleted: _refreshAllData,
+      ),
+
+      // 5. Audit Logs Screen (Event name, timestamp, user/device, result, hash-chain status)
+      AuditLogsTab(
+        onRefresh: _refreshAllData,
+      ),
+
+      // 6. Profile Screen (User info, role, logout)
+      ProfileTab(
+        user: user,
+      ),
     ];
 
-    final titles = [
-      'SecureMed IoT',
-      'PQC Security Engine',
-      'Threat Defense SIEM',
+    final screenTitles = [
+      'Clinical Dashboard',
+      'Device Fleet',
+      'Security Center',
+      'Attack Simulator',
       'Audit Ledger Chain',
-      'System & Profile',
+      'Profile & RBAC',
     ];
 
     return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
         titleSpacing: 16,
+        elevation: 0,
+        backgroundColor: Colors.white,
         title: Row(
           children: [
-            const Icon(Icons.security, size: 22, color: Color(0xFF00796B)),
-            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: const Color(0xFF00796B).withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.shield_outlined, size: 20, color: Color(0xFF00796B)),
+            ),
+            const SizedBox(width: 10),
             Expanded(
               child: Text(
-                titles[_currentTabIndex],
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                screenTitles[_currentTabIndex],
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 17,
+                  color: Color(0xFF0A192F),
+                ),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
@@ -158,8 +236,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
         actions: [
           IconButton(
-            tooltip: 'Logout (${user.email})',
-            icon: const Icon(Icons.logout),
+            tooltip: 'Sync Gateway Data',
+            icon: _isLoading
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF00796B)),
+                  )
+                : const Icon(Icons.sync, color: Color(0xFF00796B)),
+            onPressed: _isLoading ? null : _refreshAllData,
+          ),
+          IconButton(
+            tooltip: 'Sign Out (${user.email})',
+            icon: const Icon(Icons.logout, color: Color(0xFF64748B)),
             onPressed: () => context.read<AuthProvider>().signOut(),
           ),
         ],
@@ -173,26 +262,35 @@ class _DashboardScreenState extends State<DashboardScreen> {
         onDestinationSelected: (index) {
           setState(() => _currentTabIndex = index);
         },
+        height: 65,
+        backgroundColor: Colors.white,
+        elevation: 3,
+        indicatorColor: const Color(0xFF00796B).withValues(alpha: 0.15),
         destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.dashboard_outlined),
+            selectedIcon: Icon(Icons.dashboard, color: Color(0xFF00796B)),
+            label: 'Dashboard',
+          ),
           NavigationDestination(
             icon: Icon(Icons.medical_services_outlined),
             selectedIcon: Icon(Icons.medical_services, color: Color(0xFF00796B)),
-            label: 'Fleet',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.lock_clock_outlined),
-            selectedIcon: Icon(Icons.lock, color: Color(0xFF00796B)),
-            label: 'PQC Crypto',
+            label: 'Devices',
           ),
           NavigationDestination(
             icon: Icon(Icons.shield_outlined),
             selectedIcon: Icon(Icons.shield, color: Color(0xFF00796B)),
-            label: 'Threats',
+            label: 'Security',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.science_outlined),
+            selectedIcon: Icon(Icons.science, color: Color(0xFF00796B)),
+            label: 'Simulation',
           ),
           NavigationDestination(
             icon: Icon(Icons.receipt_long_outlined),
             selectedIcon: Icon(Icons.receipt_long, color: Color(0xFF00796B)),
-            label: 'Audit Log',
+            label: 'Audit Logs',
           ),
           NavigationDestination(
             icon: Icon(Icons.person_outline),

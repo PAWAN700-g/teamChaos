@@ -48,26 +48,41 @@ class SecureMedApp extends StatelessWidget {
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
           useMaterial3: true,
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: const Color(0xFF00796B), // Medical Teal
+          scaffoldBackgroundColor: const Color(0xFFF8FAFC),
+          colorScheme: const ColorScheme(
             brightness: Brightness.light,
+            primary: Color(0xFF0A192F), // Dark navy blue primary
+            onPrimary: Colors.white,
+            secondary: Color(0xFF00796B), // Teal accent
+            onSecondary: Colors.white,
+            error: Color(0xFFDC2626),
+            onError: Colors.white,
+            surface: Colors.white,
+            onSurface: Color(0xFF0F172A),
+          ),
+          appBarTheme: const AppBarTheme(
+            backgroundColor: Colors.white,
+            foregroundColor: Color(0xFF0A192F),
+            elevation: 0,
+            scrolledUnderElevation: 1,
+            centerTitle: false,
+          ),
+          cardTheme: CardThemeData(
+            color: Colors.white,
+            elevation: 1,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: const BorderSide(color: Color(0xFFE2E8F0)),
+            ),
           ),
         ),
-        darkTheme: ThemeData(
-          useMaterial3: true,
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: const Color(0xFF00897B),
-            brightness: Brightness.dark,
-          ),
-        ),
-        themeMode: ThemeMode.system,
         home: const AuthWrapper(),
       ),
     );
   }
 }
 
-/// Route Guard protecting all internal clinical & security views from unauthenticated access.
+/// Route Guard protecting all clinical & security views from unauthenticated access.
 class AuthWrapper extends StatelessWidget {
   const AuthWrapper({super.key});
 

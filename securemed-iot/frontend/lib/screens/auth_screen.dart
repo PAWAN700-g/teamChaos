@@ -75,62 +75,99 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
     final authProvider = context.watch<AuthProvider>();
 
     return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
       body: Center(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 480),
+            constraints: const BoxConstraints(maxWidth: 440),
             child: Card(
-              elevation: 4,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              elevation: 2,
+              color: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: const BorderSide(color: Color(0xFFE2E8F0)),
+              ),
               child: Padding(
-                padding: const EdgeInsets.all(28.0),
+                padding: const EdgeInsets.all(24.0),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     // Hospital / PQC Logo Header
                     Container(
-                      padding: const EdgeInsets.all(16),
+                      padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF00796B).withValues(alpha: 0.12),
+                        color: const Color(0xFF00796B).withValues(alpha: 0.1),
                         shape: BoxShape.circle,
                       ),
                       child: const Icon(
                         Icons.shield_outlined,
-                        size: 40,
+                        size: 38,
                         color: Color(0xFF00796B),
                       ),
                     ),
                     const SizedBox(height: 14),
-                    Text(
+                    const Text(
                       'SecureMed IoT',
-                      style: theme.textTheme.headlineSmall?.copyWith(
+                      style: TextStyle(
+                        fontSize: 22,
                         fontWeight: FontWeight.bold,
-                        color: const Color(0xFF00796B),
+                        color: Color(0xFF0A192F),
                       ),
                     ),
+                    const SizedBox(height: 4),
                     Text(
-                      'Post-Quantum Healthcare Device Security',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.outline,
-                        fontWeight: FontWeight.w500,
-                      ),
+                      'NIST Post-Quantum Cryptographic Healthcare Access',
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
                     ),
                     const SizedBox(height: 20),
 
-                    // Error Banner
-                    if (authProvider.errorMessage != null)
+                    // Tab Bar: Sign In vs Register
+                    Container(
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF1F5F9),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      padding: const EdgeInsets.all(4),
+                      child: TabBar(
+                        controller: _tabController,
+                        indicatorSize: TabBarIndicatorSize.tab,
+                        dividerColor: Colors.transparent,
+                        indicator: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(8),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.05),
+                              blurRadius: 4,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        labelColor: const Color(0xFF0A192F),
+                        unselectedLabelColor: const Color(0xFF64748B),
+                        labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                        tabs: const [
+                          Tab(text: 'Sign In'),
+                          Tab(text: 'Register Account'),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+
+                    // Error Message Banner (if any)
+                    if (authProvider.errorMessage != null) ...[
                       Container(
-                        margin: const EdgeInsets.only(bottom: 16),
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: colorScheme.errorContainer.withValues(alpha: 0.7),
+                          color: colorScheme.errorContainer.withValues(alpha: 0.5),
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(color: colorScheme.error.withValues(alpha: 0.5)),
                         ),
                         child: Row(
                           children: [
-                            Icon(Icons.error_outline, size: 20, color: colorScheme.error),
+                            Icon(Icons.error_outline, size: 18, color: colorScheme.error),
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
@@ -141,72 +178,22 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                                 ),
                               ),
                             ),
-                            IconButton(
-                              icon: const Icon(Icons.close, size: 16),
-                              onPressed: () => context.read<AuthProvider>().clearError(),
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(),
-                            ),
                           ],
                         ),
                       ),
+                      const SizedBox(height: 16),
+                    ],
 
-                    // Tab Selector: Sign In vs Register
-                    TabBar(
-                      controller: _tabController,
-                      indicatorColor: const Color(0xFF00796B),
-                      labelColor: const Color(0xFF00796B),
-                      tabs: const [
-                        Tab(text: 'Sign In'),
-                        Tab(text: 'Register Account'),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-
-                    // Tab Views
+                    // Tab Contents
                     SizedBox(
                       height: 380,
                       child: TabBarView(
                         controller: _tabController,
                         children: [
-                          _buildLoginForm(authProvider),
-                          _buildRegisterForm(authProvider),
+                          _buildLoginForm(context, authProvider),
+                          _buildRegisterForm(context, authProvider),
                         ],
                       ),
-                    ),
-
-                    const Divider(height: 28),
-
-                    // Quick Demo Accounts Fill Bar
-                    Text(
-                      'Quick Demo Credentials (Tap to fill):',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: colorScheme.outline,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 6,
-                      alignment: WrapAlignment.center,
-                      children: [
-                        ActionChip(
-                          avatar: const Icon(Icons.medical_services_outlined, size: 14),
-                          label: const Text('Doctor', style: TextStyle(fontSize: 11)),
-                          onPressed: () => _fillDemo('doctor@hospital.local', 'Password123!'),
-                        ),
-                        ActionChip(
-                          avatar: const Icon(Icons.shield, size: 14),
-                          label: const Text('SecOps Analyst', style: TextStyle(fontSize: 11)),
-                          onPressed: () => _fillDemo('analyst@hospital.local', 'Password123!'),
-                        ),
-                        ActionChip(
-                          avatar: const Icon(Icons.admin_panel_settings, size: 14),
-                          label: const Text('Admin', style: TextStyle(fontSize: 11)),
-                          onPressed: () => _fillDemo('admin@hospital.local', 'Password123!'),
-                        ),
-                      ],
                     ),
                   ],
                 ),
@@ -218,178 +205,194 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
     );
   }
 
-  Widget _buildLoginForm(AuthProvider authProvider) {
+  Widget _buildLoginForm(BuildContext context, AuthProvider authProvider) {
     return Form(
       key: _loginFormKey,
-      child: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
           TextFormField(
             key: const ValueKey('login_email_field'),
             controller: _loginEmailController,
-            keyboardType: TextInputType.emailAddress,
-            decoration: const InputDecoration(
-              labelText: 'Hospital Email Address',
-              prefixIcon: Icon(Icons.email_outlined),
-              border: OutlineInputBorder(),
-              isDense: true,
+            decoration: InputDecoration(
+              labelText: 'Hospital Staff Email',
+              prefixIcon: const Icon(Icons.email_outlined, size: 20),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             ),
+            keyboardType: TextInputType.emailAddress,
             validator: (val) {
-              if (val == null || val.trim().isEmpty) return 'Email is required';
+              if (val == null || val.trim().isEmpty) return 'Enter your email address';
               if (!val.contains('@')) return 'Enter a valid email address';
               return null;
             },
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
           TextFormField(
             key: const ValueKey('login_password_field'),
             controller: _loginPasswordController,
-            obscureText: true,
-            decoration: const InputDecoration(
-              labelText: 'Password',
-              prefixIcon: Icon(Icons.lock_outline),
-              border: OutlineInputBorder(),
-              isDense: true,
+            decoration: InputDecoration(
+              labelText: 'Staff Password',
+              prefixIcon: const Icon(Icons.lock_outline, size: 20),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             ),
+            obscureText: true,
             validator: (val) {
-              if (val == null || val.isEmpty) return 'Password is required';
+              if (val == null || val.isEmpty) return 'Enter your password';
               if (val.length < 6) return 'Password must be at least 6 characters';
               return null;
             },
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 18),
           ElevatedButton(
+            onPressed: authProvider.status == AuthStatus.loading ? null : _submitLogin,
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF00796B),
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(vertical: 14),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             ),
-            onPressed: authProvider.isLoading ? null : _submitLogin,
-            child: authProvider.isLoading
+            child: authProvider.status == AuthStatus.loading
                 ? const SizedBox(
                     width: 20,
                     height: 20,
                     child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                   )
-                : const Text('Secure Login', style: TextStyle(fontWeight: FontWeight.bold)),
+                : const Text(
+                    'Secure Login',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                  ),
+          ),
+          const SizedBox(height: 16),
+          // Quick Demo Credentials Selector
+          const Text(
+            'Quick-Fill Demo Credentials:',
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            children: [
+              ActionChip(
+                visualDensity: VisualDensity.compact,
+                avatar: const Icon(Icons.local_hospital, size: 14, color: Color(0xFF00796B)),
+                label: const Text('Doctor', style: TextStyle(fontSize: 11)),
+                onPressed: () => _fillDemo('doctor@hospital.local', 'Password123!'),
+              ),
+              ActionChip(
+                visualDensity: VisualDensity.compact,
+                avatar: const Icon(Icons.security, size: 14, color: Colors.indigo),
+                label: const Text('Sec Analyst', style: TextStyle(fontSize: 11)),
+                onPressed: () => _fillDemo('analyst@hospital.local', 'Password123!'),
+              ),
+              ActionChip(
+                visualDensity: VisualDensity.compact,
+                avatar: const Icon(Icons.admin_panel_settings, size: 14, color: Colors.purple),
+                label: const Text('Admin', style: TextStyle(fontSize: 11)),
+                onPressed: () => _fillDemo('admin@hospital.local', 'Password123!'),
+              ),
+            ],
           ),
         ],
       ),
-    ),
-  );
-}
+    );
+  }
 
-  Widget _buildRegisterForm(AuthProvider authProvider) {
+  Widget _buildRegisterForm(BuildContext context, AuthProvider authProvider) {
     return Form(
       key: _registerFormKey,
-      child: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            TextFormField(
-              key: const ValueKey('register_name_field'),
-              controller: _registerNameController,
-              decoration: const InputDecoration(
-                labelText: 'Full Name / Title',
-                prefixIcon: Icon(Icons.person_outline),
-                border: OutlineInputBorder(),
-                isDense: true,
-              ),
-              validator: (val) => (val == null || val.trim().isEmpty) ? 'Full name is required' : null,
+      child: ListView(
+        padding: EdgeInsets.zero,
+        children: [
+          TextFormField(
+            key: const ValueKey('register_name_field'),
+            controller: _registerNameController,
+            decoration: InputDecoration(
+              labelText: 'Full Name',
+              prefixIcon: const Icon(Icons.person_outline, size: 20),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             ),
-            const SizedBox(height: 12),
-            TextFormField(
-              key: const ValueKey('register_email_field'),
-              controller: _registerEmailController,
-              keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(
-                labelText: 'Hospital Email',
-                prefixIcon: Icon(Icons.email_outlined),
-                border: OutlineInputBorder(),
-                isDense: true,
-              ),
-              validator: (val) {
-                if (val == null || val.trim().isEmpty) return 'Email is required';
-                if (!val.contains('@')) return 'Valid email required';
-                return null;
-              },
+            validator: (val) {
+              if (val == null || val.trim().isEmpty) return 'Enter full name';
+              return null;
+            },
+          ),
+          const SizedBox(height: 12),
+          TextFormField(
+            key: const ValueKey('register_email_field'),
+            controller: _registerEmailController,
+            decoration: InputDecoration(
+              labelText: 'Staff Email',
+              prefixIcon: const Icon(Icons.email_outlined, size: 20),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             ),
-            const SizedBox(height: 12),
-            TextFormField(
-              key: const ValueKey('register_password_field'),
-              controller: _registerPasswordController,
-              obscureText: true,
-              decoration: const InputDecoration(
-                labelText: 'New Password',
-                prefixIcon: Icon(Icons.lock_outline),
-                border: OutlineInputBorder(),
-                isDense: true,
-              ),
-              validator: (val) {
-                if (val == null || val.length < 6) return 'Minimum 6 characters';
-                return null;
-              },
+            keyboardType: TextInputType.emailAddress,
+            validator: (val) {
+              if (val == null || val.trim().isEmpty) return 'Enter staff email';
+              if (!val.contains('@')) return 'Enter valid email address';
+              return null;
+            },
+          ),
+          const SizedBox(height: 12),
+          TextFormField(
+            key: const ValueKey('register_password_field'),
+            controller: _registerPasswordController,
+            decoration: InputDecoration(
+              labelText: 'Password (min 6 chars)',
+              prefixIcon: const Icon(Icons.lock_outline, size: 20),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             ),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<UserRole>(
-              key: const ValueKey('register_role_dropdown'),
-              isExpanded: true,
-              initialValue: _selectedRole,
-              decoration: const InputDecoration(
-                labelText: 'Role Designation',
-                prefixIcon: Icon(Icons.badge_outlined),
-                border: OutlineInputBorder(),
-                isDense: true,
-              ),
-              items: const [
-                DropdownMenuItem(
-                  value: UserRole.doctor,
-                  child: Text('Doctor / Clinician (Default)'),
-                ),
-                DropdownMenuItem(
-                  value: UserRole.securityAnalyst,
-                  child: Text('Security Analyst (SecOps)'),
-                ),
-                DropdownMenuItem(
-                  value: UserRole.admin,
-                  child: Text('Admin (Restricted - Requires Approval)'),
-                ),
-              ],
-              onChanged: (val) {
-                if (val != null) {
-                  setState(() => _selectedRole = val);
-                }
-              },
+            obscureText: true,
+            validator: (val) {
+              if (val == null || val.isEmpty) return 'Enter password';
+              if (val.length < 6) return 'Minimum 6 characters required';
+              return null;
+            },
+          ),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<UserRole>(
+            isExpanded: true,
+            initialValue: _selectedRole,
+            decoration: InputDecoration(
+              labelText: 'Requested Role',
+              prefixIcon: const Icon(Icons.badge_outlined, size: 20),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             ),
-            if (_selectedRole == UserRole.admin)
-              Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: Text(
-                  'SECURITY RULE: Admin role cannot be self-assigned. Default unprivileged clinician profile will be provisioned until elevated.',
-                  style: TextStyle(color: Colors.amber.shade900, fontSize: 10, fontWeight: FontWeight.bold),
-                ),
-              ),
-            const SizedBox(height: 18),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF00796B),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              ),
-              onPressed: authProvider.isLoading ? null : _submitRegister,
-              child: authProvider.isLoading
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                    )
-                  : const Text('Create Protected Account', style: TextStyle(fontWeight: FontWeight.bold)),
+            items: const [
+              DropdownMenuItem(value: UserRole.doctor, child: Text('Clinician / Doctor', overflow: TextOverflow.ellipsis)),
+              DropdownMenuItem(value: UserRole.securityAnalyst, child: Text('Security Analyst', overflow: TextOverflow.ellipsis)),
+            ],
+            onChanged: (val) {
+              if (val != null) setState(() => _selectedRole = val);
+            },
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            onPressed: authProvider.status == AuthStatus.loading ? null : _submitRegister,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF00796B),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             ),
-          ],
-        ),
+            child: authProvider.status == AuthStatus.loading
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                  )
+                : const Text(
+                    'Create Protected Account',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                  ),
+          ),
+        ],
       ),
     );
   }

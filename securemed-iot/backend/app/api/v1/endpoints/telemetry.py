@@ -235,3 +235,13 @@ async def get_latest_telemetry():
         "total_packets_ingested": len(_RECENT_TELEMETRY),
         "audit_head_hash": security_manager.audit_head_hash,
     }
+
+
+@router.get("/audit", summary="Get Tamper-Evident Audit Ledger Chain")
+async def get_audit_ledger():
+    """Returns full tamper-evident audit ledger with parent hashes and blocks."""
+    return {
+        "audit_head_hash": security_manager.audit_head_hash,
+        "chain_length": len(security_manager.audit_log_chain),
+        "events": security_manager.audit_log_chain,
+    }

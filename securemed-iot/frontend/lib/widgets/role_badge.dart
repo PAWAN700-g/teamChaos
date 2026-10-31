@@ -50,17 +50,13 @@ class RoleBadge extends StatelessWidget {
         children: [
           Icon(badgeIcon, size: isDense ? 13 : 16, color: badgeColor),
           const SizedBox(width: 4),
-          Flexible(
-            child: Text(
-              badgeText,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: badgeColor,
-                fontWeight: FontWeight.bold,
-                fontSize: isDense ? 10 : 12,
-                letterSpacing: 0.3,
-              ),
+          Text(
+            badgeText,
+            style: TextStyle(
+              color: badgeColor,
+              fontWeight: FontWeight.bold,
+              fontSize: isDense ? 10 : 12,
+              letterSpacing: 0.3,
             ),
           ),
         ],

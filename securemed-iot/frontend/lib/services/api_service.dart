@@ -1,11 +1,14 @@
-import 'dart:convert';
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
 
 class ApiService {
-  final http.Client _client;
+  final Dio _dio;
+  final Future<String?> Function()? _tokenProvider;
 
-  ApiService({http.Client? client}) : _client = client ?? http.Client();
+  ApiService({Dio? dio, this._tokenProvider})
+      : _dio = dio ?? Dio() {
+    _initDio();
+  }
 
   /// Determine base URL dynamically based on operating platform.
   /// Android Emulator loops back to host machine via 10.0.2.2.
@@ -24,62 +27,189 @@ class ApiService {
     }
   }
 
+  void _initDio() {
+    _dio.options.baseUrl = baseUrl;
+    _dio.options.connectTimeout = const Duration(seconds: 5);
+    _dio.options.receiveTimeout = const Duration(seconds: 5);
+    _dio.options.headers = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    };
+
+    _dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) async {
+          if (_tokenProvider != null) {
+            try {
+              final token = await _tokenProvider();
+              if (token != null && token.isNotEmpty) {
+                options.headers['Authorization'] = 'Bearer $token';
+              }
+            } catch (e) {
+              debugPrint('[ApiService] Notice: could not retrieve auth token: $e');
+            }
+          }
+          return handler.next(options);
+        },
+        onError: (DioException error, handler) {
+          debugPrint('[ApiService] Request error [${error.response?.statusCode}]: ${error.message}');
+          return handler.next(error);
+        },
+      ),
+    );
+  }
+
   Future<Map<String, dynamic>> getHealth() async {
-    final uri = Uri.parse('$baseUrl/health');
-    final response = await _client.get(uri).timeout(const Duration(seconds: 4));
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body) as Map<String, dynamic>;
+    try {
+      final response = await _dio.get('/health');
+      return response.data is Map<String, dynamic>
+          ? response.data as Map<String, dynamic>
+          : <String, dynamic>{};
+    } on DioException catch (e) {
+      throw _handleDioError(e);
     }
-    throw Exception('Gateway returned HTTP ${response.statusCode}');
   }
 
   Future<Map<String, dynamic>> getCryptoInfo() async {
-    final uri = Uri.parse('$baseUrl/crypto/info');
-    final response = await _client.get(uri).timeout(const Duration(seconds: 4));
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body) as Map<String, dynamic>;
+    try {
+      final response = await _dio.get('/crypto/info');
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw _handleDioError(e);
     }
-    throw Exception('Crypto info returned HTTP ${response.statusCode}');
   }
 
   Future<Map<String, dynamic>> getCryptoStatus() async {
-    final uri = Uri.parse('$baseUrl/crypto/status');
-    final response = await _client.get(uri).timeout(const Duration(seconds: 4));
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body) as Map<String, dynamic>;
+    try {
+      final response = await _dio.get('/crypto/status');
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw _handleDioError(e);
     }
-    throw Exception('Crypto status returned HTTP ${response.statusCode}');
   }
 
   Future<List<dynamic>> getDevices() async {
-    final uri = Uri.parse('$baseUrl/devices/');
-    final response = await _client.get(uri).timeout(const Duration(seconds: 4));
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body) as List<dynamic>;
+    try {
+      final response = await _dio.get('/devices/');
+      return response.data is List ? response.data as List<dynamic> : [];
+    } on DioException catch (e) {
+      throw _handleDioError(e);
     }
-    throw Exception('Devices endpoint returned HTTP ${response.statusCode}');
+  }
+
+  Future<Map<String, dynamic>> getDevice(String deviceId) async {
+    try {
+      final response = await _dio.get('/devices/$deviceId');
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw _handleDioError(e);
+    }
+  }
+
+  Future<Map<String, dynamic>> registerDevice({
+    required String deviceId,
+    required String deviceType,
+    required String dsaPublicKeyB64,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/devices/register',
+        data: {
+          'device_id': deviceId,
+          'device_type': deviceType,
+          'dsa_public_key_b64': dsaPublicKeyB64,
+        },
+      );
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw _handleDioError(e);
+    }
   }
 
   Future<Map<String, dynamic>> revokeDevice(String deviceId, {String reason = "Admin revocation"}) async {
-    final uri = Uri.parse('$baseUrl/devices/$deviceId/revoke');
-    final response = await _client.post(
-      uri,
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'reason': reason}),
-    ).timeout(const Duration(seconds: 4));
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body) as Map<String, dynamic>;
+    try {
+      final response = await _dio.post(
+        '/devices/$deviceId/revoke',
+        data: {'reason': reason},
+      );
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw _handleDioError(e);
     }
-    throw Exception('Revocation returned HTTP ${response.statusCode}: ${response.body}');
   }
 
   Future<Map<String, dynamic>> getLatestTelemetry() async {
-    final uri = Uri.parse('$baseUrl/telemetry/latest');
-    final response = await _client.get(uri).timeout(const Duration(seconds: 4));
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body) as Map<String, dynamic>;
+    try {
+      final response = await _dio.get('/telemetry/latest');
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw _handleDioError(e);
     }
-    throw Exception('Telemetry endpoint returned HTTP ${response.statusCode}');
+  }
+
+  Future<Map<String, dynamic>> getAuditLedger() async {
+    try {
+      final response = await _dio.get('/telemetry/audit');
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw _handleDioError(e);
+    }
+  }
+
+  // --- ATTACK SIMULATION ENDPOINTS ---
+
+  Future<Map<String, dynamic>> simulateReplay() async {
+    try {
+      final response = await _dio.post('/simulation/replay');
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw _handleDioError(e);
+    }
+  }
+
+  Future<Map<String, dynamic>> simulateTampering() async {
+    try {
+      final response = await _dio.post('/simulation/tampering');
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw _handleDioError(e);
+    }
+  }
+
+  Future<Map<String, dynamic>> simulateFakeDevice() async {
+    try {
+      final response = await _dio.post('/simulation/fake-device');
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw _handleDioError(e);
+    }
+  }
+
+  Future<Map<String, dynamic>> simulateUnauthorizedCommand() async {
+    try {
+      final response = await _dio.post('/simulation/unauthorized-command');
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw _handleDioError(e);
+    }
+  }
+
+  Future<Map<String, dynamic>> simulateFirmwareTampering() async {
+    try {
+      final response = await _dio.post('/simulation/firmware-tampering');
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw _handleDioError(e);
+    }
+  }
+
+  Future<Map<String, dynamic>> simulateRateLimit() async {
+    try {
+      final response = await _dio.post('/simulation/rate-limit');
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw _handleDioError(e);
+    }
   }
 
   Future<Map<String, dynamic>> verifyFirmware({
@@ -90,26 +220,35 @@ class ApiService {
     required String vendorDsaPubB64,
     String? expectedSha256,
   }) async {
-    final uri = Uri.parse('$baseUrl/firmware/verify');
-    final payload = <String, dynamic>{
-      'firmware_name': firmwareName,
-      'version': version,
-      'firmware_image_b64': firmwareImageB64,
-      'vendor_signature_b64': vendorSignatureB64,
-      'vendor_dsa_pub_b64': vendorDsaPubB64,
-    };
-    if (expectedSha256 != null) {
-      payload['expected_sha256'] = expectedSha256;
+    try {
+      final payload = <String, dynamic>{
+        'firmware_name': firmwareName,
+        'version': version,
+        'firmware_image_b64': firmwareImageB64,
+        'vendor_signature_b64': vendorSignatureB64,
+        'vendor_dsa_pub_b64': vendorDsaPubB64,
+      };
+      if (expectedSha256 != null) {
+        payload['expected_sha256'] = expectedSha256;
+      }
+      final response = await _dio.post('/firmware/verify', data: payload);
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw _handleDioError(e);
     }
+  }
 
-    final response = await _client.post(
-      uri,
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode(payload),
-    ).timeout(const Duration(seconds: 4));
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body) as Map<String, dynamic>;
+  Exception _handleDioError(DioException error) {
+    if (error.type == DioExceptionType.connectionTimeout ||
+        error.type == DioExceptionType.receiveTimeout ||
+        error.type == DioExceptionType.connectionError) {
+      return Exception('SecureMed Gateway unreachable. Check backend connection at $baseUrl.');
     }
-    throw Exception('Firmware verification returned HTTP ${response.statusCode}: ${response.body}');
+    final resp = error.response;
+    if (resp != null) {
+      final detail = resp.data is Map ? resp.data['detail'] : resp.statusMessage;
+      return Exception('HTTP ${resp.statusCode}: ${detail ?? error.message}');
+    }
+    return Exception(error.message ?? 'Unknown network error');
   }
 }

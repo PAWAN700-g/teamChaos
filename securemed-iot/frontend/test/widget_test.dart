@@ -16,8 +16,7 @@ void main() {
     expect(find.text('Register Account'), findsOneWidget);
     expect(find.text('Secure Login'), findsOneWidget);
 
-    expect(find.text('Connected Device Fleet'), findsNothing);
-    expect(find.text('Post-Quantum Cryptographic Architecture'), findsNothing);
+    expect(find.text('Fleet Overview & Security State'), findsNothing);
   });
 
   testWidgets('DashboardScreen renders without any overflows on standard mobile (390x844)',
@@ -40,13 +39,13 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
     await tester.pumpAndSettle();
 
-    expect(find.text('SecureMed IoT'), findsOneWidget);
-    expect(find.text('Connected Device Fleet'), findsOneWidget);
-    expect(find.text('Post-Quantum Cryptographic Architecture'), findsOneWidget);
-    expect(find.text('ICU Patient Monitor #01'), findsOneWidget);
+    expect(find.text('Clinical Dashboard'), findsOneWidget);
+    expect(find.text('Fleet Overview & Security State'), findsOneWidget);
+    expect(find.text('Latest Telemetry Vitals'), findsOneWidget);
+    expect(find.text('Heart Rate Trend'), findsOneWidget);
   });
 
-  testWidgets('Multi-page NavigationBar transitions seamlessly across all 5 specialized tabs',
+  testWidgets('Multi-page NavigationBar transitions seamlessly across all specialized screens',
       (WidgetTester tester) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1.0;
@@ -66,28 +65,35 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
     await tester.pumpAndSettle();
 
-    // 1. Verify Tab 0: Fleet
+    // 1. Tab 0: Clinical Dashboard
+    expect(find.text('Clinical Dashboard'), findsOneWidget);
+    expect(find.text('Total Devices'), findsOneWidget);
+
+    // 2. Tab 1: Devices
+    await tester.tap(find.text('Devices'));
+    await tester.pumpAndSettle();
+    expect(find.text('Device Fleet'), findsOneWidget);
     expect(find.text('Connected Device Fleet'), findsOneWidget);
 
-    // 2. Switch to Tab 1: PQC Crypto
-    await tester.tap(find.text('PQC Crypto'));
+    // 3. Tab 2: Security Center
+    await tester.tap(find.text('Security'));
     await tester.pumpAndSettle();
-    expect(find.text('Quantum-Resistant Cryptographic Engine'), findsOneWidget);
-    expect(find.text('Live PQC Cryptographic Self-Test'), findsOneWidget);
+    expect(find.text('Security Operations Center (SIEM)'), findsOneWidget);
+    expect(find.text('Attack Detection History'), findsOneWidget);
 
-    // 3. Switch to Tab 2: Threats SIEM
-    await tester.tap(find.text('Threats'));
+    // 4. Tab 3: Attack Simulation
+    await tester.tap(find.text('Simulation'));
     await tester.pumpAndSettle();
-    expect(find.text('Cybersecurity Threat SIEM & Defense'), findsOneWidget);
-    expect(find.text('Emergency Device Revocation'), findsOneWidget);
+    expect(find.text('Cybersecurity Attack Simulator'), findsOneWidget);
+    expect(find.text('1. Replay Attack'), findsOneWidget);
 
-    // 4. Switch to Tab 3: Audit Log Chain
-    await tester.tap(find.text('Audit Log'));
+    // 5. Tab 4: Audit Logs
+    await tester.tap(find.text('Audit Logs'));
     await tester.pumpAndSettle();
-    expect(find.text('Tamper-Evident SHA-256 Audit Ledger'), findsOneWidget);
-    expect(find.text('Current Audit Head Digest'), findsOneWidget);
+    expect(find.text('Audit Ledger Chain'), findsWidgets);
+    expect(find.text('Hash-Chain Integrity Status'), findsOneWidget);
 
-    // 5. Switch to Tab 4: Profile & Settings
+    // 6. Tab 5: Profile & Settings
     await tester.tap(find.text('Profile'));
     await tester.pumpAndSettle();
     expect(find.text('User Profile & System Administration'), findsOneWidget);

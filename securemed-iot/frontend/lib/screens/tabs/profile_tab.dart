@@ -32,7 +32,7 @@ class _ProfileTabState extends State<ProfileTab> {
       if (mounted) {
         setState(() {
           _isPinging = false;
-          _pingResult = 'CONNECTED (${stopwatch.elapsedMilliseconds} ms)\nStatus: ${res["status"]} | Service: ${res["service"]}\nPQC: ${res["cryptography"]?["kem_algorithm"]}';
+          _pingResult = 'CONNECTED (${stopwatch.elapsedMilliseconds} ms)\nStatus: ${res["status"]} | Service: ${res["service"]}\nPQC: ${res["cryptography"]?["kem_algorithm"]} & ${res["cryptography"]?["dsa_algorithm"]}';
         });
       }
     } catch (e) {
@@ -48,7 +48,6 @@ class _ProfileTabState extends State<ProfileTab> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
     final user = widget.user;
 
     return SingleChildScrollView(
@@ -59,26 +58,33 @@ class _ProfileTabState extends State<ProfileTab> {
           // Section Title
           Text(
             'User Profile & System Administration',
-            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: const Color(0xFF0F172A),
+            ),
           ),
-          const SizedBox(height: 4),
-          Text(
+          const SizedBox(height: 2),
+          const Text(
             'Role-based access permissions, Firebase authentication tokens, and gateway network routing.',
-            style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.outline),
+            style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
 
           // User Identity Card
           Card(
-            elevation: 2,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            elevation: 1,
+            color: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: const BorderSide(color: Color(0xFFE2E8F0)),
+            ),
             child: Padding(
               padding: const EdgeInsets.all(16.0),
               child: Column(
                 children: [
                   CircleAvatar(
                     radius: 32,
-                    backgroundColor: const Color(0xFF00796B).withValues(alpha: 0.15),
+                    backgroundColor: const Color(0xFF00796B).withValues(alpha: 0.12),
                     child: Text(
                       user.displayName.isNotEmpty ? user.displayName[0].toUpperCase() : 'U',
                       style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Color(0xFF00796B)),
@@ -87,71 +93,79 @@ class _ProfileTabState extends State<ProfileTab> {
                   const SizedBox(height: 10),
                   Text(
                     user.displayName,
-                    style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                    style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
                   ),
                   const SizedBox(height: 2),
                   Text(
                     user.email,
-                    style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.outline),
+                    style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
                   ),
                   const SizedBox(height: 10),
                   RoleBadge(role: user.role, isDense: false),
                   const SizedBox(height: 12),
                   const Divider(height: 16),
-                  _buildProfileRow('Firebase User ID', user.uid),
+                  _buildProfileRow('User UID', user.uid.isNotEmpty ? user.uid : 'FIREBASE-LOCAL-SESSION'),
                   _buildProfileRow('Account Created', user.createdAt.toIso8601String().substring(0, 10)),
-                  _buildProfileRow('Role Security Level', user.role.name.toUpperCase()),
+                  _buildProfileRow('Session Status', 'Authenticated (RBAC Enforced)'),
                 ],
               ),
             ),
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 16),
 
-          // Role-Based Access Control (RBAC) Permissions Matrix Card
+          // RBAC Permissions Matrix Card
           Text(
             'RBAC Security Permissions Matrix',
-            style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: const Color(0xFF0F172A),
+            ),
           ),
           const SizedBox(height: 8),
           Card(
             elevation: 1,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            color: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: const BorderSide(color: Color(0xFFE2E8F0)),
+            ),
             child: Padding(
               padding: const EdgeInsets.all(14.0),
               child: Column(
                 children: [
-                  _buildPermissionRow('Clinical Telemetry Reading', true, 'Doctors, Analysts, Admins'),
+                  _buildPermissionRow('View Real-time Vitals & ECG', true),
                   const Divider(height: 14),
-                  _buildPermissionRow('Physiological Anomaly Alerts', true, 'Doctors, Analysts, Admins'),
+                  _buildPermissionRow('Register / Provision IoT Hardware', user.isAdmin || user.isSecurityAnalyst),
                   const Divider(height: 14),
-                  _buildPermissionRow('Cryptographic Key Handshake', true, 'Registered IoT Devices Only'),
+                  _buildPermissionRow('Emergency Device Key Revocation', user.isAdmin || user.isSecurityAnalyst),
                   const Divider(height: 14),
-                  _buildPermissionRow(
-                    'Device Credential Revocation',
-                    user.role == UserRole.admin || user.role == UserRole.securityAnalyst,
-                    'Security Analysts & Admins Only',
-                  ),
+                  _buildPermissionRow('Trigger Hostile Attack Simulations', true),
                   const Divider(height: 14),
-                  _buildPermissionRow(
-                    'OTA Firmware Attestation & Signing',
-                    user.role == UserRole.admin,
-                    'Hospital Security Admins Only',
-                  ),
+                  _buildPermissionRow('OTA Firmware Signing & Verification', user.isAdmin),
+                  const Divider(height: 14),
+                  _buildPermissionRow('Export Cryptographic Audit Ledger', user.isAdmin || user.isSecurityAnalyst),
                 ],
               ),
             ),
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 16),
 
-          // Gateway Network Connection Card
+          // Gateway Connectivity & Diagnostics
           Text(
-            'FastAPI Backend Gateway Connection',
-            style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+            'Gateway Connectivity Diagnostics',
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: const Color(0xFF0F172A),
+            ),
           ),
           const SizedBox(height: 8),
           Card(
             elevation: 1,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            color: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: const BorderSide(color: Color(0xFFE2E8F0)),
+            ),
             child: Padding(
               padding: const EdgeInsets.all(14.0),
               child: Column(
@@ -159,79 +173,83 @@ class _ProfileTabState extends State<ProfileTab> {
                 children: [
                   Row(
                     children: [
-                      const Icon(Icons.router_outlined, size: 20, color: Colors.teal),
-                      const SizedBox(width: 8),
-                      Expanded(
+                      const Expanded(
                         child: Text(
-                          'Gateway API URL',
-                          style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+                          'FastAPI Gateway Routing',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF0F172A)),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        ApiService.baseUrl,
+                        style: const TextStyle(fontSize: 11, fontFamily: 'monospace', color: Color(0xFF00796B)),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 6),
-                  Container(
+                  const SizedBox(height: 12),
+                  SizedBox(
                     width: double.infinity,
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: colorScheme.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      ApiService.baseUrl,
-                      style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                    child: OutlinedButton.icon(
+                      onPressed: _isPinging ? null : _pingGateway,
+                      icon: _isPinging
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF00796B)),
+                            )
+                          : const Icon(Icons.network_ping, size: 16),
+                      label: Text(_isPinging ? 'Pinging Gateway...' : 'Ping Gateway Diagnostics'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF00796B),
+                        side: const BorderSide(color: Color(0xFF00796B)),
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 10),
                   if (_pingResult != null) ...[
+                    const SizedBox(height: 10),
                     Container(
                       width: double.infinity,
-                      padding: const EdgeInsets.all(8),
+                      padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: _pingResult!.startsWith('CONNECTED') ? Colors.green.shade50 : Colors.red.shade50,
-                        borderRadius: BorderRadius.circular(6),
+                        color: _pingResult!.contains('CONNECTED') ? const Color(0xFFECFDF5) : Colors.red.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: _pingResult!.contains('CONNECTED') ? const Color(0xFF10B981) : Colors.redAccent,
+                        ),
                       ),
                       child: Text(
                         _pingResult!,
                         style: TextStyle(
                           fontSize: 11,
                           fontFamily: 'monospace',
-                          color: _pingResult!.startsWith('CONNECTED') ? Colors.green.shade900 : Colors.red.shade900,
-                          fontWeight: FontWeight.w600,
+                          color: _pingResult!.contains('CONNECTED') ? const Color(0xFF065F46) : Colors.red.shade900,
                         ),
                       ),
                     ),
-                    const SizedBox(height: 10),
                   ],
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: _isPinging ? null : _pingGateway,
-                      icon: _isPinging
-                          ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
-                          : const Icon(Icons.network_check_rounded, size: 16),
-                      label: Text(_isPinging ? 'Pinging Gateway...' : 'Ping Gateway & Test Health'),
-                    ),
-                  ),
                 ],
               ),
             ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 22),
 
-          // Log Out Action Button
+          // Logout Button
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
+              onPressed: () => context.read<AuthProvider>().signOut(),
+              icon: const Icon(Icons.logout),
+              label: const Text('End Secure Session & Log Out'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.red.shade700,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               ),
-              onPressed: () => context.read<AuthProvider>().signOut(),
-              icon: const Icon(Icons.logout),
-              label: const Text('Sign Out of SecureMed IoT', style: TextStyle(fontWeight: FontWeight.bold)),
             ),
           ),
           const SizedBox(height: 24),
@@ -244,31 +262,46 @@ class _ProfileTabState extends State<ProfileTab> {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4.0),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey)),
-          Text(value, style: const TextStyle(fontSize: 11, fontFamily: 'monospace', fontWeight: FontWeight.w600)),
+          Text(label, style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              value,
+              textAlign: TextAlign.end,
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildPermissionRow(String title, bool isAllowed, String roles) {
+  Widget _buildPermissionRow(String permission, bool granted) {
     return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Icon(
-          isAllowed ? Icons.check_circle : Icons.cancel,
-          size: 16,
-          color: isAllowed ? Colors.teal : Colors.grey,
-        ),
-        const SizedBox(width: 8),
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: isAllowed ? Colors.black87 : Colors.grey)),
-              Text(roles, style: const TextStyle(fontSize: 10, color: Colors.grey)),
-            ],
+          child: Text(
+            permission,
+            style: const TextStyle(fontSize: 12, color: Color(0xFF334155)),
+          ),
+        ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          decoration: BoxDecoration(
+            color: granted ? const Color(0xFFD1FAE5) : const Color(0xFFF1F5F9),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Text(
+            granted ? 'PERMITTED' : 'RESTRICTED',
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+              color: granted ? const Color(0xFF065F46) : const Color(0xFF94A3B8),
+            ),
           ),
         ),
       ],
