@@ -154,22 +154,10 @@ cd securemed-iot/device_simulator
 
 ---
 
-### 6. Run All Unit & Security Tests
+### 6. Run All Unit & Security Tests (82 Tests Total)
 
 ```bash
-# Run Backend Pytest, Simulator Security Verification, and Frontend Flutter tests:
-powershell -ExecutionPolicy Bypass -File scripts/run_all_tests.ps1
-```
-
-Or run individually:
-```bash
-# Run All Test Suites (55 tests: 24 backend + 12 simulator + 19 frontend):
-powershell -ExecutionPolicy Bypass -File scripts/run_all_tests.ps1
-```
-
-Or run individually:
-```bash
-# Backend Pytest (24 test cases verifying PQC, RBAC, and Firestore Integration):
+# Backend Pytest (43 test cases verifying PQC, RBAC, Firmware, Audit, and Firestore):
 cd securemed-iot/backend
 .\.venv\Scripts\python -m pytest -v
 
@@ -177,7 +165,7 @@ cd securemed-iot/backend
 cd securemed-iot/device_simulator
 ..\backend\.venv\Scripts\python -m pytest -v
 
-# Frontend Flutter tests (19 test cases verifying 9-screen Material 3 UI & streams):
+# Frontend Flutter tests (27 test cases verifying 9-screen Material 3 UI & streams):
 cd securemed-iot/frontend
 flutter test
 ```
@@ -276,6 +264,40 @@ cd securemed-iot/device_simulator
 ..\backend\.venv\Scripts\python simulator.py --devices all --interval 4.0
 ```
 Telemetry will be post-quantum encrypted, signed with ML-DSA-65, decrypted by FastAPI, published to Cloud Firestore, and streamed live to the Flutter Material 3 Dashboard!
+
+---
+
+## 🎯 Hackathon Demonstration Script
+
+Follow this step-by-step procedure during the live hackathon presentation:
+
+1. **Authentication & Multi-Role Scoping**:
+   - Launch Flutter frontend: `flutter run -d chrome`.
+   - Log in as **Doctor** (`doctor@hospital.local` / `Password123!`). View assigned patient vital metrics.
+   - Notice device revocation is restricted for clinicians.
+   - Switch to **Administrator** (`admin@hospital.local` / `Password123!`). Access elevated fleet controls.
+2. **Post-Quantum Fleet Encryption**:
+   - In "Devices" tab, view real-time fleet: `MED-DEV-ICU-701A`, `MED-DEV-INF-412C`, `MED-DEV-VENT-901B`.
+   - Tap any device to view live synthetic ECG waveforms, SpO2, and Heart Rate charts with cryptographic attestation.
+3. **Cybersecurity Threat Vector Simulation**:
+   - Navigate to the **Simulation** tab.
+   - Trigger the 8 hostile attacks:
+     1. **Device Impersonation**: Rogue device fails signature and registry lookup (`404 Not Found`).
+     2. **Replay Attack**: Duplicate sequence packet dropped (`400 Bad Request`).
+     3. **Telemetry Tampering**: Bit-flipped ciphertext fails GHASH tag verification (`400 Bad Request`).
+     4. **Unauthorized Access**: Clinician attempting admin action blocked (`403 Forbidden`).
+     5. **Firmware Tampering**: Altered binary fails ML-DSA signature check (`400 Bad Request`).
+     6. **Rate-Limit Attack**: High-frequency packet flood throttled (`429 Too Many Requests`).
+     7. **Device Revocation**: Revoked device blocked from session handshake (`403 Forbidden`).
+     8. **Audit Modification**: Corrupted ledger record detected by hash chaining (`400 Bad Request`).
+   - Every attack displays the 4 required parameters: **Simulated Attack Input**, **Backend Security Mechanism**, **Expected Result**, and **Actual Result**.
+4. **Security Center & Firmware Attestation**:
+   - In the **Security Center** tab, inspect real-time SIEM alerts sorted by severity (Critical, High, Medium, Low).
+   - In the **Firmware Security & Anti-Rollback** card, click **Verify Package** to attest genuine firmware against the Trusted Keystore.
+   - Click **Test Rollback Block** to demonstrate anti-rollback defense rejecting a prohibited downgrade (`v1.5.0` < `v2.0.0`).
+5. **Tamper-Evident Audit Ledger & External Anchoring**:
+   - Open the **Audit Logs** tab. Click **Verify Chain** to cryptographically verify SHA-256 hash-chain continuity.
+   - Click **Export Anchor** to view the SHA-256 anchoring digest and review the documented limitation regarding whole-database recomputation.
 
 ---
 
