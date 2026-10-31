@@ -124,32 +124,41 @@ powershell -ExecutionPolicy Bypass -File scripts/run_android.ps1
 
 ---
 
-### 5. Run Medical Device Simulator
+### 5. Run Medical Device Fleet Simulator
 
 ```bash
 # Navigate to device simulator
 cd securemed-iot/device_simulator
 
-# Execute simulated device PQC handshake & synthetic telemetry cycle
-..\backend\.venv\Scripts\python simulator.py
+# 1. Run all 3 simulated medical devices (ECG, Heart Rate, SpO2):
+..\backend\.venv\Scripts\python simulator.py --devices all
+
+# 2. Run a specific device continuously (e.g. 12-Lead ECG monitor with 3s intervals):
+..\backend\.venv\Scripts\python simulator.py --devices ecg --interval 3.0 --count 0
+
+# 3. Simulate an attack (replay attack, MITM ciphertext tampering, or signature forgery):
+..\backend\.venv\Scripts\python simulator.py --devices spo2 --attack replay --count 2
+
+# 4. Run the automated cybersecurity & cryptographic verification suite:
+..\backend\.venv\Scripts\python simulator.py --verify
 ```
 
 ---
 
-### 5. Run All Unit Tests
+### 6. Run All Unit & Security Tests
 
 ```bash
-# Run both Backend Pytest and Frontend Flutter tests via PowerShell script
+# Run Backend Pytest, Simulator Security Verification, and Frontend Flutter tests:
 powershell -ExecutionPolicy Bypass -File scripts/run_all_tests.ps1
 ```
 
 Or run individually:
 ```bash
-# Backend pytest
-cd securemed-iot/backend
-.venv\Scripts\pytest -v
+# Backend & Simulator tests (31 test cases verifying PQC, replay, and telemetry):
+cd securemed-iot
+backend\.venv\Scripts\python -m pytest backend/tests device_simulator/test_simulator.py -v
 
-# Frontend flutter test
+# Frontend Flutter tests (11 test cases verifying responsive UI, tabs, and auth):
 cd securemed-iot/frontend
 flutter test
 ```

@@ -7,13 +7,14 @@ Write-Host "====================================================================
 Write-Host "Running All SecureMed IoT Unit Tests..." -ForegroundColor Green
 Write-Host "======================================================================" -ForegroundColor Cyan
 
-Write-Host "`n[1/2] Running Backend Pytest Suite..." -ForegroundColor Yellow
+Write-Host "`n[1/2] Running Backend & Simulator Pytest Suite..." -ForegroundColor Yellow
 Set-Location $BackendDir
+$env:PYTHONPATH = "$BackendDir;$ScriptDir\..\device_simulator"
 $PytestExe = Join-Path $BackendDir ".venv\Scripts\pytest.exe"
 if (Test-Path $PytestExe) {
-    & $PytestExe -q
+    & $PytestExe tests ..\device_simulator\test_simulator.py -q
 } else {
-    pytest -q
+    pytest tests ..\device_simulator\test_simulator.py -q
 }
 
 Write-Host "`n[2/2] Running Frontend Flutter Widget Tests..." -ForegroundColor Yellow

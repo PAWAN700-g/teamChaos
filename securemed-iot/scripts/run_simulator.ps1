@@ -10,7 +10,7 @@ Write-Host "Starting SecureMed IoT Medical Device Simulator..." -ForegroundColor
 Write-Host "======================================================================" -ForegroundColor Cyan
 
 if (Test-Path $BackendVenvPython) {
-    & $BackendVenvPython simulator.py
+    & $BackendVenvPython simulator.py $args
 } else {
-    python simulator.py
+    python simulator.py $args
 }

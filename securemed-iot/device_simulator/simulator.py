@@ -1,223 +1,285 @@
-"""SecureMed IoT - Simulated Medical Device Client.
+"""SecureMed IoT - Multi-Device Medical Simulator & Orchestrator.
 
-Simulates connected hospital patient-monitoring devices generating synthetic telemetry
-and communicating via Post-Quantum Cryptography (ML-KEM-768, ML-DSA-65, AES-256-GCM)
-over real HTTP network connections to the FastAPI Gateway.
+Orchestrates simulated Post-Quantum medical IoT devices:
+1. ECG Monitor (MED-DEV-ECG-101)
+2. Heart-Rate Monitor (MED-DEV-HR-202)
+3. SpO2 Monitor (MED-DEV-SPO2-303)
 
-DISCLAIMER: Hackathon prototype only. Simulated devices & synthetic patient data only.
+DISCLAIMER:
+Hackathon cybersecurity prototype only.
+Simulated medical devices & synthetic patient data only.
 Never connect to actual medical equipment or perform clinical decisions.
+All telemetry readings are explicitly synthetic.
 """
 
 import sys
 import os
 import time
-import json
-import base64
-import requests
-from typing import Optional, Dict, Any
-from datetime import datetime, timezone
+import argparse
+import logging
+import threading
+from typing import List, Dict, Any, Optional
 
-# Add backend directory to path to share crypto engine
+# Add backend directory to sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "backend")))
-from app.core.crypto_engine import RealPQCCryptoEngine
 
-from models import SyntheticPatientVitals
+from models import DeviceType, DeviceStatus, ConnectionState
+from device import MedicalDevice
 from config import sim_settings
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%H:%M:%S",
+)
+logger = logging.getLogger("SimulatorCLI")
 
-class MedicalDeviceSimulator:
-    def __init__(self, device_id: str, device_type: str, gateway_url: str):
-        self.device_id = device_id
-        self.device_type = device_type
+
+DEVICE_PROFILES = {
+    "ecg": {
+        "device_id": "MED-DEV-ECG-101",
+        "device_type": DeviceType.ECG_MONITOR,
+        "name": "Post-Quantum 12-Lead ECG Monitor",
+        "battery": 98,
+    },
+    "hr": {
+        "device_id": "MED-DEV-HR-202",
+        "device_type": DeviceType.HEART_RATE_MONITOR,
+        "name": "Post-Quantum Wearable Heart-Rate Monitor",
+        "battery": 92,
+    },
+    "spo2": {
+        "device_id": "MED-DEV-SPO2-303",
+        "device_type": DeviceType.SPO2_MONITOR,
+        "name": "Post-Quantum Pulse Oximeter / SpO2 Monitor",
+        "battery": 87,
+    },
+}
+
+
+class MedicalDeviceFleet:
+    """Manages lifecycle and concurrent telemetry streaming for multiple devices."""
+
+    def __init__(self, gateway_url: str):
         self.gateway_url = gateway_url.rstrip("/")
-        print(f"[{self.device_id}] Initializing Post-Quantum Medical Device ({self.device_type})...")
+        self.devices: Dict[str, MedicalDevice] = {}
 
-        # Generate ML-DSA-65 device identity key pair (NIST FIPS 204)
-        self.dsa_private_key, self.dsa_public_key = RealPQCCryptoEngine.generate_dsa_keypair()
-        self.dsa_pub_bytes = RealPQCCryptoEngine.serialize_dsa_public_key(self.dsa_public_key)
-        print(f"[{self.device_id}] ML-DSA-65 Identity Key generated ({len(self.dsa_pub_bytes)} bytes public key).")
+    def add_device(self, key: str, custom_id: Optional[str] = None) -> MedicalDevice:
+        """Instantiates and registers a simulated device profile."""
+        profile = DEVICE_PROFILES.get(key.lower())
+        if not profile:
+            raise ValueError(f"Unknown device profile '{key}'. Choices: {list(DEVICE_PROFILES.keys())}")
 
-        self.session_key: Optional[bytes] = None
-        self.session_id: Optional[str] = None
-        self.sequence_number = 0
+        dev_id = custom_id or profile["device_id"]
+        device = MedicalDevice(
+            device_id=dev_id,
+            device_type=profile["device_type"],
+            name=profile["name"],
+            gateway_url=self.gateway_url,
+            initial_battery=profile["battery"],
+        )
+        self.devices[dev_id] = device
+        return device
 
-    def register_device(self) -> bool:
-        """Registers the device's ML-DSA-65 public key identity with the trusted backend."""
-        print(f"[{self.device_id}] Registering public key with Gateway at {self.gateway_url}/devices/register...")
-        try:
-            res = requests.post(
-                f"{self.gateway_url}/devices/register",
-                json={
-                    "device_id": self.device_id,
-                    "device_type": self.device_type,
-                    "dsa_public_key_b64": base64.b64encode(self.dsa_pub_bytes).decode("utf-8"),
-                },
-                timeout=5,
-            )
-            if res.status_code in (200, 201):
-                print(f"[{self.device_id}] Device registered successfully with Gateway.")
-                return True
-            else:
-                print(f"[{self.device_id}] Device registration returned {res.status_code}: {res.text}")
-                return False
-        except Exception as e:
-            print(f"[{self.device_id}] Network error registering device: {e}")
+    def bootstrap_device(self, device: MedicalDevice) -> bool:
+        """Performs initial registration and PQC handshake."""
+        logger.info(f"=== Bootstrapping {device.name} ({device.device_id}) ===")
+        if not device.register():
+            logger.error(f"[{device.device_id}] Gateway registration failed.")
             return False
 
-    def perform_network_pqc_handshake(self) -> bool:
-        """Executes live Post-Quantum Handshake with the hospital gateway over HTTP."""
-        print(f"[{self.device_id}] Contacting Gateway for handshake at {self.gateway_url}/crypto/handshake/init...")
-
-        # Step 1: Request Gateway's ephemeral ML-KEM-768 public key & random challenge
-        try:
-            init_res = requests.post(
-                f"{self.gateway_url}/crypto/handshake/init",
-                json={"device_id": self.device_id},
-                timeout=5,
-            )
-            init_res.raise_for_status()
-            init_data = init_res.json()
-        except Exception as e:
-            print(f"[{self.device_id}] Network error reaching Gateway during handshake init: {e}")
+        if not device.establish_session():
+            logger.error(f"[{device.device_id}] PQC handshake failed.")
             return False
 
-        gateway_kem_pub_bytes = base64.b64decode(init_data["gateway_kem_pub_b64"])
-        challenge_bytes = base64.b64decode(init_data["challenge_b64"])
+        return True
 
-        # Step 2: Encapsulate shared secret using Gateway's ML-KEM-768 public key
-        gateway_kem_pub = RealPQCCryptoEngine.deserialize_kem_public_key(gateway_kem_pub_bytes)
-        shared_secret, ciphertext = RealPQCCryptoEngine.kem_encapsulate(gateway_kem_pub)
+    def run_device_loop(
+        self,
+        device: MedicalDevice,
+        count: int = 5,
+        interval: float = 2.0,
+        attack_type: str = "none",
+        stop_event: Optional[threading.Event] = None,
+    ):
+        """Streams telemetry packets for a single device."""
+        if not self.bootstrap_device(device):
+            logger.error(f"[{device.device_id}] Bootstrapping failed. Stopping transmission thread.")
+            return
 
-        # Step 3: Sign the Gateway authentication challenge with device's ML-DSA-65 private key
-        signed_challenge = RealPQCCryptoEngine.dsa_sign(self.dsa_private_key, challenge_bytes)
+        packets_sent = 0
+        is_attack = attack_type != "none"
 
-        # Step 4: Generate random salt and construct transcript binding
-        salt = os.urandom(16)
-        transcript = (
-            f"{self.device_id}:".encode("utf-8")
-            + gateway_kem_pub_bytes
-            + challenge_bytes
-            + ciphertext
-            + salt
+        logger.info(
+            f"[{device.device_id}] Starting telemetry streaming (Interval: {interval}s | "
+            f"Packets: {'Continuous' if count == 0 else count} | Attack: {attack_type})..."
         )
 
-        # Step 5: Derive independent 256-bit session keys via HKDF-SHA-256
-        keys = RealPQCCryptoEngine.derive_session_keys(
-            shared_secret=shared_secret,
-            salt=salt,
-            context_transcript=transcript,
-        )
-        self.session_key = keys["telemetry_enc_key"]
+        while True:
+            if stop_event and stop_event.is_set():
+                break
 
-        # Step 6: Complete handshake with Gateway
-        try:
-            complete_res = requests.post(
-                f"{self.gateway_url}/crypto/handshake/complete",
-                json={
-                    "device_id": self.device_id,
-                    "ciphertext_b64": base64.b64encode(ciphertext).decode("utf-8"),
-                    "signed_challenge_b64": base64.b64encode(signed_challenge).decode("utf-8"),
-                    "salt_b64": base64.b64encode(salt).decode("utf-8"),
-                    "client_timestamp": datetime.now(timezone.utc).isoformat(),
-                },
-                timeout=5,
+            packets_sent += 1
+            print(f"\n--- [{device.device_id}] Transmitting Packet #{packets_sent} ---")
+            success, result = device.emit_telemetry(
+                is_attack=is_attack,
+                attack_type=attack_type,
             )
-            complete_res.raise_for_status()
-            complete_data = complete_res.json()
-            self.session_id = complete_data["session_id"]
-            self.sequence_number = 0
-            print(f"[{self.device_id}] PQC Handshake SUCCESS! Session ID: {self.session_id} | Transcript Hash: {complete_data['handshake_transcript_hash'][:16]}...")
-            return True
-        except Exception as e:
-            print(f"[{self.device_id}] Handshake completion failed: {e}")
-            return False
 
-    def emit_telemetry_packet(self, is_attack: bool = False) -> Optional[Dict[str, Any]]:
-        """Generate synthetic patient vitals, encrypt with AES-256-GCM, and POST to Gateway."""
-        if not self.session_key or not self.session_id:
-            print(f"[{self.device_id}] Cannot transmit: Active PQC session not established!")
-            return None
+            # Check if device was revoked or encountered fatal error
+            if device.connection_state == ConnectionState.REVOKED:
+                logger.error(f"[{device.device_id}] Device has been revoked. Halting streaming thread.")
+                break
 
-        self.sequence_number += 1
-        current_ts = datetime.now(timezone.utc).isoformat()
+            if count > 0 and packets_sent >= count:
+                logger.info(f"[{device.device_id}] Completed configured packet count ({count}). Exiting thread.")
+                break
 
-        vitals = (
-            SyntheticPatientVitals.generate_tampered_attack_sample()
-            if is_attack
-            else SyntheticPatientVitals.generate_random_normal()
-        )
-        payload_bytes = vitals.model_dump_json().encode("utf-8")
-
-        # Step 1: Sign the raw plaintext telemetry using NIST FIPS 204 ML-DSA-65
-        signature_bytes = RealPQCCryptoEngine.dsa_sign(self.dsa_private_key, payload_bytes)
-
-        # Step 2: Construct Authenticated Associated Data (AAD) binding device, session, sequence, and timestamp
-        aad_raw = f"{self.device_id}:{self.session_id}:{self.sequence_number}:{current_ts}".encode("utf-8")
-
-        # Step 3: Encrypt with AES-256-GCM
-        enc = RealPQCCryptoEngine.encrypt_telemetry(
-            key=self.session_key,
-            plaintext=payload_bytes,
-            aad=aad_raw,
-        )
-
-        packet = {
-            "device_id": self.device_id,
-            "session_id": self.session_id,
-            "sequence_number": self.sequence_number,
-            "timestamp": current_ts,
-            "device_type": self.device_type,
-            "nonce_b64": enc["nonce_b64"],
-            "ciphertext_b64": enc["ciphertext_b64"],
-            "signature_b64": base64.b64encode(signature_bytes).decode("utf-8"),
-            "aad_b64": enc["aad_b64"],
-        }
-
-        try:
-            res = requests.post(
-                f"{self.gateway_url}/telemetry/ingest",
-                json=packet,
-                timeout=5,
-            )
-            res.raise_for_status()
-            data = res.json()
-            print(f"[{self.device_id}] Seq #{self.sequence_number} verified by Gateway! Status: {data.get('status')} | Anomaly: {data.get('tampering_detected')}")
-            return data
-        except Exception as e:
-            print(f"[{self.device_id}] Telemetry ingestion failed: {e}")
-            return None
+            time.sleep(interval)
 
 
-def run_live():
-    print("=" * 75)
-    print("SecureMed IoT Device Simulator - Post-Quantum Medical Device Client")
-    print("DISCLAIMER: Hackathon prototype. Synthetic patient data only.")
-    print("=" * 75)
+def print_banner():
+    banner = """
+================================================================================
+   SecureMed IoT - Post-Quantum Medical Device Fleet Simulator
+   Algorithms: NIST FIPS 203 ML-KEM-768 | NIST FIPS 204 ML-DSA-65 | AES-256-GCM
+   DISCLAIMER: HACKATHON PROTOTYPE ONLY. SYNTHETIC MEDICAL DATA. NEVER FOR CLINICAL USE.
+================================================================================
+"""
+    print(banner)
 
-    device = MedicalDeviceSimulator(
-        device_id=sim_settings.DEVICE_ID,
-        device_type=sim_settings.DEVICE_TYPE,
-        gateway_url=sim_settings.GATEWAY_API_URL,
+
+def parse_arguments() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="SecureMed IoT - Medical Device Fleet Simulator",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Run all 3 devices (ECG, Heart Rate, SpO2) with default 5 packets each:
+  python simulator.py --devices all
+
+  # Run only the ECG monitor continuously with 3-second intervals:
+  python simulator.py --devices ecg --interval 3.0 --count 0
+
+  # Simulate a physiological anomaly attack on the SpO2 monitor:
+  python simulator.py --devices spo2 --attack anomaly --count 3
+
+  # Run the end-to-end cryptographic and cybersecurity verification suite:
+  python simulator.py --verify
+        """,
     )
+    parser.add_argument(
+        "--devices",
+        type=str,
+        default="all",
+        help="Devices to simulate: 'all', 'ecg', 'hr', 'spo2', or comma-separated combination (default: 'all')",
+    )
+    parser.add_argument(
+        "--gateway",
+        type=str,
+        default=sim_settings.GATEWAY_API_URL,
+        help=f"FastAPI Gateway URL (default: {sim_settings.GATEWAY_API_URL})",
+    )
+    parser.add_argument(
+        "--interval",
+        type=float,
+        default=2.0,
+        help="Transmission interval between packets in seconds (default: 2.0)",
+    )
+    parser.add_argument(
+        "--count",
+        type=int,
+        default=5,
+        help="Number of packets to transmit per device (0 for continuous loop, default: 5)",
+    )
+    parser.add_argument(
+        "--attack",
+        type=str,
+        default="none",
+        choices=["none", "anomaly", "replay", "tamper_ciphertext", "tamper_signature", "stale_timestamp"],
+        help="Cybersecurity test attack mode (default: 'none')",
+    )
+    parser.add_argument(
+        "--verify",
+        action="store_true",
+        help="Execute automated end-to-end verification suite against Gateway and exit",
+    )
+    return parser.parse_args()
 
-    # 1. Register device public identity
-    if not device.register_device():
-        print("[Simulator] Could not register device with Gateway. Ensure FastAPI backend is running.")
-        return
 
-    # 2. Establish ML-KEM-768 + ML-DSA-65 Handshake over HTTP
-    if not device.perform_network_pqc_handshake():
-        print("[Simulator] Handshake failed. Exiting.")
-        return
+def main():
+    print_banner()
+    args = parse_arguments()
 
-    # 3. Emit 3 live telemetry packets
-    for i in range(1, 4):
-        print(f"\n--- Transmitting Telemetry Packet #{i} ---")
-        device.emit_telemetry_packet(is_attack=sim_settings.SIMULATE_ATTACK)
-        time.sleep(sim_settings.TELEMETRY_INTERVAL_SECONDS)
+    if args.verify:
+        from test_simulator import run_verification_suite
+        success = run_verification_suite(gateway_url=args.gateway)
+        sys.exit(0 if success else 1)
 
-    print("\nSUCCESS: All telemetry packets securely transmitted and verified by Gateway over HTTP!")
+    fleet = MedicalDeviceFleet(gateway_url=args.gateway)
+
+    # Determine which devices to start
+    target_keys = []
+    if args.devices.strip().lower() == "all":
+        target_keys = ["ecg", "hr", "spo2"]
+    else:
+        for k in args.devices.split(","):
+            k_clean = k.strip().lower()
+            if k_clean in DEVICE_PROFILES:
+                target_keys.append(k_clean)
+            else:
+                logger.warning(f"Unknown device identifier '{k}'. Skipping.")
+
+    if not target_keys:
+        logger.error("No valid devices selected. Choose from: 'all', 'ecg', 'hr', 'spo2'.")
+        sys.exit(1)
+
+    print(f"Selected Simulated Devices: {[DEVICE_PROFILES[k]['name'] for k in target_keys]}")
+    print(f"Connecting to Gateway at: {args.gateway}")
+    print(f"Interval: {args.interval}s | Packets per device: {'Continuous' if args.count == 0 else args.count}")
+    print(f"Attack Simulation Mode: {args.attack}\n")
+
+    threads: List[threading.Thread] = []
+    stop_event = threading.Event()
+
+    try:
+        for key in target_keys:
+            device = fleet.add_device(key)
+            t = threading.Thread(
+                target=fleet.run_device_loop,
+                kwargs={
+                    "device": device,
+                    "count": args.count,
+                    "interval": args.interval,
+                    "attack_type": args.attack,
+                    "stop_event": stop_event,
+                },
+                daemon=True,
+            )
+            threads.append(t)
+            t.start()
+            # Stagger startup slightly to avoid socket clash
+            time.sleep(0.5)
+
+        for t in threads:
+            t.join()
+
+        print("\n" + "=" * 80)
+        print("All device simulation sessions completed successfully.")
+        print("Device Fleet State Summary:")
+        for dev_id, dev in fleet.devices.items():
+            s = dev.get_state_summary()
+            print(f" - [{s['device_id']}] {s['name']}: State={s['connection_state']} | Status={s['device_status']} | Seq={s['sequence_counter']} | Last Seen={s['last_seen_timestamp']}")
+        print("=" * 80)
+
+    except KeyboardInterrupt:
+        logger.info("\nCaught keyboard interrupt. Signaling all simulator threads to stop...")
+        stop_event.set()
+        for t in threads:
+            t.join(timeout=1.0)
+        print("Simulator stopped.")
 
 
 if __name__ == "__main__":
-    run_live()
+    main()
