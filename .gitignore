@@ -1,0 +1,67 @@
+# Top-level workspace gitignore
+
+# Virtual environments
+.venv/
+**/.venv/
+env/
+**/env/
+venv/
+**/venv/
+
+# Python caches and artifacts
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+**/.pytest_cache/
+.coverage
+htmlcov/
+dist/
+develop-eggs/
+downloads/
+eggs/
+.eggs/
+*.egg-info/
+*.egg
+
+# Secrets and environment configs
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.cert
+*.service-account.json
+
+# Dart & Flutter build caches
+.dart_tool/
+**/.dart_tool/
+.packages
+**/.packages
+build/
+**/build/
+.flutter-plugins
+**/.flutter-plugins
+.flutter-plugins-dependencies
+**/.flutter-plugins-dependencies
+android/.gradle/
+**/android/.gradle/
+android/app/build/
+**/android/app/build/
+windows/flutter/ephemeral/
+**/windows/flutter/ephemeral/
+linux/flutter/ephemeral/
+**/linux/flutter/ephemeral/
+macos/Flutter/ephemeral/
+**/macos/Flutter/ephemeral/
+
+# IDE & OS files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+Desktop.ini
