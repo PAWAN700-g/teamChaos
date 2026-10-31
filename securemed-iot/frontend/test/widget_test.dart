@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:securemed_iot/main.dart';
 import 'package:securemed_iot/services/mock_auth_service.dart';
@@ -10,14 +11,64 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
 
-    // Verify unauthenticated user lands on AuthScreen (Login)
     expect(find.text('SecureMed IoT'), findsWidgets);
     expect(find.text('Sign In'), findsOneWidget);
     expect(find.text('Register Account'), findsOneWidget);
     expect(find.text('Secure Login'), findsOneWidget);
 
-    // Verify unauthenticated user CANNOT see the Dashboard
-    expect(find.text('Connected Medical Device Fleet'), findsNothing);
+    expect(find.text('Connected Device Fleet'), findsNothing);
     expect(find.text('Post-Quantum Cryptographic Architecture'), findsNothing);
+  });
+
+  testWidgets('DashboardScreen renders without any overflows on standard mobile (390x844)',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final mockAuth = MockAuthService(seedSampleUsers: true);
+    await tester.pumpWidget(SecureMedApp(authService: mockAuth));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(const ValueKey('login_email_field')), 'doctor@hospital.local');
+    await tester.enterText(find.byKey(const ValueKey('login_password_field')), 'Password123!');
+    await tester.pump();
+
+    await tester.tap(find.text('Secure Login'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
+
+    expect(find.text('SecureMed IoT'), findsOneWidget);
+    expect(find.text('Connected Device Fleet'), findsOneWidget);
+    expect(find.text('Post-Quantum Cryptographic Architecture'), findsOneWidget);
+    expect(find.text('ICU Patient Monitor #01'), findsOneWidget);
+  });
+
+  testWidgets('DashboardScreen renders without any overflows on compact mobile (320x640)',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final mockAuth = MockAuthService(seedSampleUsers: true);
+    await tester.pumpWidget(SecureMedApp(authService: mockAuth));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(const ValueKey('login_email_field')), 'doctor@hospital.local');
+    await tester.enterText(find.byKey(const ValueKey('login_password_field')), 'Password123!');
+    await tester.pump();
+
+    await tester.tap(find.text('Secure Login'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
+
+    expect(find.text('SecureMed IoT'), findsOneWidget);
+    expect(find.text('Connected Device Fleet'), findsOneWidget);
+    expect(find.text('Post-Quantum Cryptographic Architecture'), findsOneWidget);
+    expect(find.text('ICU Patient Monitor #01'), findsOneWidget);
   });
 }

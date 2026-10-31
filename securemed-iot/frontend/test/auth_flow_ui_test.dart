@@ -40,7 +40,7 @@ void main() {
     // 5. Verify User Lands on Secured Dashboard
     expect(find.text('Dr. James Wilson'), findsOneWidget);
     expect(find.text('CLINICIAN / DOCTOR'), findsWidgets);
-    expect(find.text('Connected Medical Device Fleet'), findsOneWidget);
+    expect(find.text('Connected Device Fleet'), findsOneWidget);
     expect(find.text('Post-Quantum Cryptographic Architecture'), findsOneWidget);
 
     // 6. Test Logout: Tap 'Log Out'
@@ -65,6 +65,6 @@ void main() {
 
     // 9. Verify Logged Back In
     expect(find.text('Dr. James Wilson'), findsOneWidget);
-    expect(find.text('Connected Medical Device Fleet'), findsOneWidget);
+    expect(find.text('Connected Device Fleet'), findsOneWidget);
   });
 }
