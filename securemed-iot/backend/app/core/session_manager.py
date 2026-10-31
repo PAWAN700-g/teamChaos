@@ -12,6 +12,7 @@ from typing import Dict, Any, Optional, Set, List, Tuple
 from datetime import datetime, timezone, timedelta
 import uuid
 import base64
+import hashlib
 
 from cryptography.hazmat.primitives.asymmetric import mldsa
 from app.core.crypto_engine import RealPQCCryptoEngine
@@ -340,25 +341,47 @@ class SecurityStateManager:
         return True, "VALID", session
 
     # -------------------------------------------------------------
-    # Tamper-Evident Audit Hash Chaining
+    # Tamper-Evident Audit Hash Chaining & External Anchoring
     # -------------------------------------------------------------
 
-    def _record_audit_event(self, event_type: str, device_id: str, details: Dict[str, Any]):
+    def _record_audit_event(
+        self,
+        event_type: str,
+        device_id: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+        actor: Optional[str] = None,
+        result: str = "SUCCESS",
+        event_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Appends a new security-relevant event to the SHA-256 cryptographic hash chain."""
         now = datetime.now(timezone.utc).isoformat()
-        payload = f"{now}|{event_type}|{device_id}|{str(details)}".encode("utf-8")
+        evt_id = event_id or f"EVT-{uuid.uuid4().hex[:12].upper()}"
+        effective_actor = actor or device_id or "SYSTEM_GATEWAY"
+        effective_device_id = device_id or actor or "GATEWAY"
+        effective_details = details or {}
+
+        # Canonical hash payload: timestamp|event_id|actor|event_type|result|details
+        payload = f"{now}|{evt_id}|{effective_actor}|{event_type}|{result}|{str(effective_details)}".encode("utf-8")
         new_hash = RealPQCCryptoEngine.compute_audit_chain_hash(self.audit_head_hash, payload)
 
         event = {
             "index": len(self.audit_log_chain) + 1,
+            "event_id": evt_id,
             "timestamp": now,
+            "actor": effective_actor,
+            "device_id": effective_device_id,  # backward compatibility
             "event_type": event_type,
-            "device_id": device_id,
-            "details": details,
+            "event": event_type,  # backward compatibility
+            "result": result,
+            "details": effective_details,
             "previous_hash": self.audit_head_hash,
+            "parent_hash": self.audit_head_hash,  # backward compatibility
             "entry_hash": new_hash,
+            "block_hash": new_hash,  # backward compatibility
         }
         self.audit_head_hash = new_hash
         self.audit_log_chain.append(event)
+        return event
 
     def _record_security_incident(
         self,
@@ -376,20 +399,98 @@ class SecurityStateManager:
             severity=severity,
         )
         self.incidents.append(record)
-        self._record_audit_event("SECURITY_ALERT_TRIGGERED", device_id, record.to_dict())
+        self._record_audit_event(
+            event_type="SECURITY_ALERT_TRIGGERED",
+            device_id=device_id,
+            details=record.to_dict(),
+            actor=device_id,
+            result="DETECTED_AND_LOGGED",
+        )
 
-    def verify_audit_chain(self) -> Tuple[bool, str]:
-        """Cryptographically verifies the SHA-256 hash chaining of all audit entries."""
+    def verify_audit_chain(self, include_details: bool = False) -> Any:
+        """Cryptographically verifies the SHA-256 hash chaining of all audit entries.
+        
+        Returns:
+            If include_details is True: Tuple[bool, str, Optional[Dict[str, Any]]]
+            Else: Tuple[bool, str]
+        """
         expected_prev = "GENESIS_SECUREMED_AUDIT_ROOT_00000000000000000000000000000000"
         for i, entry in enumerate(self.audit_log_chain):
-            if entry["previous_hash"] != expected_prev:
-                return False, f"Broken link at block #{i + 1}: previous_hash mismatch"
-            payload = f"{entry['timestamp']}|{entry['event_type']}|{entry['device_id']}|{str(entry['details'])}".encode("utf-8")
+            prev = entry.get("previous_hash") or entry.get("parent_hash")
+            if prev != expected_prev:
+                fail_info = {
+                    "block_index": i + 1,
+                    "event_id": entry.get("event_id", f"EVT-BLOCK-{i+1}"),
+                    "expected_previous_hash": expected_prev,
+                    "actual_previous_hash": prev,
+                    "reason": "Broken previous_hash chain linkage",
+                }
+                msg = f"Broken chain link at block #{i + 1}: parent hash mismatch"
+                return (False, msg, fail_info) if include_details else (False, msg)
+
+            # Compute hash using canonical format
+            evt_id = entry.get("event_id")
+            actor = entry.get("actor") or entry.get("device_id", "SYSTEM")
+            evt_type = entry.get("event_type") or entry.get("event", "UNKNOWN")
+            res = entry.get("result", "SUCCESS")
+            ts = entry.get("timestamp", "")
+            details = entry.get("details", {})
+
+            if evt_id:
+                payload = f"{ts}|{evt_id}|{actor}|{evt_type}|{res}|{str(details)}".encode("utf-8")
+            else:
+                payload = f"{ts}|{evt_type}|{actor}|{str(details)}".encode("utf-8")
+
             recomputed = RealPQCCryptoEngine.compute_audit_chain_hash(expected_prev, payload)
-            if entry["entry_hash"] != recomputed:
-                return False, f"Hash mismatch at block #{i + 1}: expected {entry['entry_hash']} != computed {recomputed}"
-            expected_prev = entry["entry_hash"]
-        return True, "Chain intact"
+            actual_entry_hash = entry.get("entry_hash") or entry.get("block_hash")
+
+            if actual_entry_hash != recomputed:
+                # Also test legacy payload format for backwards compatibility
+                legacy_payload = f"{ts}|{evt_type}|{actor}|{str(details)}".encode("utf-8")
+                legacy_hash = RealPQCCryptoEngine.compute_audit_chain_hash(expected_prev, legacy_payload)
+                if actual_entry_hash != legacy_hash:
+                    fail_info = {
+                        "block_index": i + 1,
+                        "event_id": entry.get("event_id", f"EVT-BLOCK-{i+1}"),
+                        "expected_hash": recomputed,
+                        "actual_hash": actual_entry_hash,
+                        "reason": "Audit record content modified: SHA-256 digest mismatch",
+                    }
+                    msg = f"Integrity failure at block #{i + 1}: entry hash mismatch"
+                    return (False, msg, fail_info) if include_details else (False, msg)
+
+            expected_prev = actual_entry_hash
+
+        success_msg = "All audit ledger blocks intact and cryptographically verified"
+        return (True, success_msg, None) if include_details else (True, success_msg)
+
+    def get_anchoring_digest(self) -> Dict[str, Any]:
+        """Produces cryptographic anchoring digest of the latest ledger state for external anchoring."""
+        chain_len = len(self.audit_log_chain)
+        latest_entry = self.audit_log_chain[-1] if self.audit_log_chain else None
+        latest_ts = latest_entry["timestamp"] if latest_entry else datetime.now(timezone.utc).isoformat()
+        latest_evt_id = latest_entry.get("event_id", "GENESIS") if latest_entry else "GENESIS"
+
+        anchor_str = f"{self.audit_head_hash}:{chain_len}:{latest_ts}"
+        anchoring_digest = hashlib.sha256(anchor_str.encode("utf-8")).hexdigest()
+
+        return {
+            "audit_head_hash": self.audit_head_hash,
+            "chain_length": chain_len,
+            "latest_event_id": latest_evt_id,
+            "latest_timestamp": latest_ts,
+            "anchoring_digest": anchoring_digest,
+            "anchoring_format": "SHA256(head_hash:chain_length:latest_timestamp)",
+            "anchored_at": datetime.now(timezone.utc).isoformat(),
+            "limitation_disclosure": (
+                "SECURITY LIMITATION NOTICE: Local SHA-256 hash chaining guarantees detection of modified, "
+                "deleted, or inserted records within an existing chain. However, if an adversary obtains "
+                "database-level write access and regenerates the entire chain from genesis, internal verification "
+                "cannot detect complete ledger replacement. Periodic anchoring of this digest to an external "
+                "immutable authority (e.g. public ledger, RFC 3161 TSA, or transparency log) is required "
+                "to defend against whole-database recomputation attacks."
+            ),
+        }
 
 
 # Global singleton security state manager for the gateway

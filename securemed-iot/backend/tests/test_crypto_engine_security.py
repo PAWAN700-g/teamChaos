@@ -413,6 +413,10 @@ def test_firmware_sha256_and_mldsa_signature_verification():
     firmware_sha256 = RealPQCCryptoEngine.compute_sha256(firmware_binary)
     vendor_sig = RealPQCCryptoEngine.dsa_sign(vendor_priv, firmware_binary)
 
+    # Register the test vendor key in the Trusted Keystore
+    from app.core.firmware_service import firmware_service
+    firmware_service.register_trusted_vendor_key("VENDOR-TEST-01", "Test Partner Vendor", vendor_pub_bytes)
+
     # 1. Valid firmware submission
     res_valid = client.post(
         "/api/v1/firmware/verify",

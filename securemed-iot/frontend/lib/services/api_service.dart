@@ -238,6 +238,76 @@ class ApiService {
     }
   }
 
+  Future<Map<String, dynamic>> verifyAuditLedger() async {
+    try {
+      final response = await _dio.get('/audit/verify');
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      try {
+        final fallback = await _dio.get('/telemetry/audit/verify');
+        return fallback.data as Map<String, dynamic>;
+      } catch (_) {
+        throw _handleDioError(e);
+      }
+    }
+  }
+
+  Future<Map<String, dynamic>> exportAuditAnchor() async {
+    try {
+      final response = await _dio.get('/audit/anchor');
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      try {
+        final fallback = await _dio.get('/telemetry/audit/anchor');
+        return fallback.data as Map<String, dynamic>;
+      } catch (_) {
+        throw _handleDioError(e);
+      }
+    }
+  }
+
+  Future<Map<String, dynamic>> getFirmwareStatus() async {
+    try {
+      final response = await _dio.get('/firmware/status');
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw _handleDioError(e);
+    }
+  }
+
+  Future<Map<String, dynamic>> getTrustedVendorKeys() async {
+    try {
+      final response = await _dio.get('/firmware/trusted-keys');
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw _handleDioError(e);
+    }
+  }
+
+  Future<Map<String, dynamic>> generateSyntheticFirmware({
+    String firmwareName = "SecureMed-RTOS-Patch-v2.5.0",
+    String version = "2.5.0",
+    String minAllowedVersion = "2.0.0",
+    String vendorKeyId = "VENDOR-SECUREMED-PRIMARY",
+    bool useUntrustedKey = false,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/firmware/generate-synthetic',
+        data: {
+          'firmware_name': firmwareName,
+          'version': version,
+          'min_allowed_version': minAllowedVersion,
+          'vendor_key_id': vendorKeyId,
+          'use_untrusted_key': useUntrustedKey,
+        },
+      );
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      throw _handleDioError(e);
+    }
+  }
+
   Future<Map<String, dynamic>> verifyFirmware({
     required String firmwareName,
     required String version,

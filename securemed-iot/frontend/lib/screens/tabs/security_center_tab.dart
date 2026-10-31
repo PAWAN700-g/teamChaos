@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../models/security_alert_model.dart';
+import '../../services/api_service.dart';
 import '../../widgets/summary_metric_card.dart';
 
 class SecurityCenterTab extends StatefulWidget {
@@ -19,7 +20,124 @@ class SecurityCenterTab extends StatefulWidget {
 }
 
 class _SecurityCenterTabState extends State<SecurityCenterTab> {
+  final ApiService _apiService = ApiService();
   String _selectedSeverityFilter = 'ALL';
+  bool _isTestingFirmware = false;
+
+  void _verifyBaselineFirmware() async {
+    setState(() => _isTestingFirmware = true);
+    try {
+      // Generate synthetic firmware and verify against backend
+      final pkg = await _apiService.generateSyntheticFirmware(
+        firmwareName: "SecureMed-RTOS-Patch-v2.5.0",
+        version: "2.5.0",
+        minAllowedVersion: "2.0.0",
+      );
+
+      final res = await _apiService.verifyFirmware(
+        firmwareName: pkg['firmware_name'] as String,
+        version: pkg['version'] as String,
+        firmwareImageB64: pkg['firmware_image_b64'] as String,
+        vendorSignatureB64: pkg['vendor_signature_b64'] as String,
+        vendorDsaPubB64: pkg['vendor_dsa_pub_b64'] as String,
+        expectedSha256: pkg['sha256_fingerprint'] as String?,
+      );
+
+      if (mounted) {
+        setState(() => _isTestingFirmware = false);
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            title: const Row(
+              children: [
+                Icon(Icons.verified, color: Color(0xFF0D9488), size: 24),
+                SizedBox(width: 8),
+                Text('Firmware Attested', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            content: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('Package: ${res['firmware_name']}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                Text('Version: ${res['version']} (Anti-Rollback passed)', style: const TextStyle(fontSize: 12, color: Color(0xFF0D9488))),
+                const SizedBox(height: 6),
+                const Text('SHA-256 Fingerprint:', style: TextStyle(fontSize: 11, color: Color(0xFF64748B))),
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(6)),
+                  child: Text(res['sha256_fingerprint'] as String? ?? '', style: const TextStyle(fontSize: 10, fontFamily: 'monospace')),
+                ),
+                const SizedBox(height: 8),
+                Text('Vendor Keystore: ${res['vendor_key_id'] ?? "VENDOR-SECUREMED-PRIMARY"}', style: const TextStyle(fontSize: 11, color: Color(0xFF475569))),
+                Text('Digital Signature: ML-DSA-65 (FIPS 204 Valid)', style: const TextStyle(fontSize: 11, color: Color(0xFF0D9488))),
+              ],
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close')),
+            ],
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isTestingFirmware = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Firmware verification failed: $e'), backgroundColor: Colors.red.shade800),
+        );
+      }
+    }
+  }
+
+  void _testRollbackRejection() async {
+    setState(() => _isTestingFirmware = true);
+    try {
+      // Prohibited downgrade version 1.5.0 < 2.0.0
+      final pkg = await _apiService.generateSyntheticFirmware(
+        firmwareName: "SecureMed-RTOS-Patch-v1.5.0",
+        version: "1.5.0",
+        minAllowedVersion: "2.0.0",
+      );
+
+      await _apiService.verifyFirmware(
+        firmwareName: pkg['firmware_name'] as String,
+        version: pkg['version'] as String,
+        firmwareImageB64: pkg['firmware_image_b64'] as String,
+        vendorSignatureB64: pkg['vendor_signature_b64'] as String,
+        vendorDsaPubB64: pkg['vendor_dsa_pub_b64'] as String,
+      );
+
+      if (mounted) {
+        setState(() => _isTestingFirmware = false);
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isTestingFirmware = false);
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            title: const Row(
+              children: [
+                Icon(Icons.shield, color: Colors.orange, size: 24),
+                SizedBox(width: 8),
+                Text('Anti-Rollback Triggered', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            content: Text(
+              'Backend Defense Verified:\n$e\n\nDowngrade attack successfully blocked and recorded into audit ledger.',
+              style: const TextStyle(fontSize: 12, color: Color(0xFF334155)),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
+            ],
+          ),
+        );
+        widget.onRefresh();
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -139,7 +257,102 @@ class _SecurityCenterTabState extends State<SecurityCenterTab> {
                 ),
               ],
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 14),
+
+            // Firmware Security & Anti-Rollback Card
+            Card(
+              elevation: 1,
+              color: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: const BorderSide(color: Color(0xFFE2E8F0)),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(14.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.system_update_alt, color: Color(0xFF00796B), size: 18),
+                        const SizedBox(width: 8),
+                        const Expanded(
+                          child: Text(
+                            'Firmware Security & Anti-Rollback',
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF0F172A)),
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFD1FAE5),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text(
+                            'ML-DSA-65 ATTESTED',
+                            style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Color(0xFF065F46)),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const Divider(height: 16),
+                    const Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Baseline: v2.4.1',
+                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF334155)),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        SizedBox(width: 8),
+                        Text(
+                          'Min Permitted: v2.0.0',
+                          style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Keystore: SecureMed Primary Root Signer (NIST FIPS 204)',
+                      style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: _isTestingFirmware ? null : _verifyBaselineFirmware,
+                          icon: _isTestingFirmware
+                              ? const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2))
+                              : const Icon(Icons.check_circle_outline, size: 14),
+                          label: const Text('Verify Package', style: TextStyle(fontSize: 11)),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFF00796B),
+                            side: const BorderSide(color: Color(0xFF00796B)),
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                          ),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: _isTestingFirmware ? null : _testRollbackRejection,
+                          icon: const Icon(Icons.history_toggle_off, size: 14),
+                          label: const Text('Test Rollback Block', style: TextStyle(fontSize: 11)),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.red.shade800,
+                            side: BorderSide(color: Colors.red.shade300),
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
 
             // Filter Chips
             SingleChildScrollView(

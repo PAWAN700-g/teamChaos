@@ -265,3 +265,24 @@ async def get_audit_ledger():
         "chain_length": len(security_manager.audit_log_chain),
         "events": security_manager.audit_log_chain,
     }
+
+
+@router.get("/audit/verify", summary="Verify Audit Hash Chain Integrity")
+async def verify_audit_ledger():
+    """Verifies SHA-256 hash continuity across all audit records."""
+    is_intact, message, failure_info = security_manager.verify_audit_chain(include_details=True)
+    anchoring_info = security_manager.get_anchoring_digest()
+    return {
+        "is_intact": is_intact,
+        "total_blocks_verified": len(security_manager.audit_log_chain),
+        "head_hash": security_manager.audit_head_hash,
+        "message": message,
+        "corrupted_block": failure_info,
+        "limitation_disclosure": anchoring_info["limitation_disclosure"],
+    }
+
+
+@router.get("/audit/anchor", summary="Export Anchoring Digest for External Publication")
+async def get_audit_anchor():
+    """Exports latest head hash & anchoring digest for external anchoring."""
+    return security_manager.get_anchoring_digest()
