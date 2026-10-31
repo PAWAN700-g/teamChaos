@@ -37,14 +37,18 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
     await tester.pumpAndSettle();
 
-    // 5. Verify User Lands on Secured Dashboard
-    expect(find.text('Dr. James Wilson'), findsOneWidget);
-    expect(find.text('CLINICIAN / DOCTOR'), findsWidgets);
+    // 5. Verify User Lands on Secured Dashboard (Fleet Tab initially visible)
     expect(find.text('Connected Device Fleet'), findsOneWidget);
     expect(find.text('Post-Quantum Cryptographic Architecture'), findsOneWidget);
 
-    // 6. Test Logout: Tap 'Log Out'
-    await tester.tap(find.widgetWithText(OutlinedButton, 'Log Out'));
+    // Navigate to Profile tab to verify Doctor Profile is only in Profile tab
+    await tester.tap(find.text('Profile'));
+    await tester.pumpAndSettle();
+    expect(find.text('Dr. James Wilson'), findsOneWidget);
+    expect(find.text('CLINICIAN / DOCTOR'), findsWidgets);
+
+    // 6. Test Logout: Tap logout action in AppBar
+    await tester.tap(find.widgetWithIcon(IconButton, Icons.logout));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
     await tester.pumpAndSettle();
@@ -64,7 +68,9 @@ void main() {
     await tester.pumpAndSettle();
 
     // 9. Verify Logged Back In
-    expect(find.text('Dr. James Wilson'), findsOneWidget);
     expect(find.text('Connected Device Fleet'), findsOneWidget);
+    await tester.tap(find.text('Profile'));
+    await tester.pumpAndSettle();
+    expect(find.text('Dr. James Wilson'), findsOneWidget);
   });
 }

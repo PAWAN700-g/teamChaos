@@ -1,11 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import '../../models/user_profile.dart';
-import '../../providers/auth_provider.dart';
-import '../../widgets/role_badge.dart';
 
 class FleetTab extends StatelessWidget {
-  final UserProfile user;
+  final UserProfile? user;
   final bool isConnecting;
   final String backendStatus;
   final VoidCallback onSyncBackend;
@@ -14,7 +11,7 @@ class FleetTab extends StatelessWidget {
 
   const FleetTab({
     super.key,
-    required this.user,
+    this.user,
     required this.isConnecting,
     required this.backendStatus,
     required this.onSyncBackend,
@@ -32,83 +29,6 @@ class FleetTab extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // User Session Profile Card
-          Card(
-            elevation: 1,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: Padding(
-              padding: const EdgeInsets.all(14.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      CircleAvatar(
-                        radius: 22,
-                        backgroundColor: const Color(0xFF00796B).withValues(alpha: 0.15),
-                        child: Text(
-                          user.displayName.isNotEmpty ? user.displayName[0].toUpperCase() : 'U',
-                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF00796B)),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              user.displayName,
-                              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              user.email,
-                              style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.outline),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      OutlinedButton.icon(
-                        onPressed: () => context.read<AuthProvider>().signOut(),
-                        icon: const Icon(Icons.logout, size: 14),
-                        label: const Text('Log Out', style: TextStyle(fontSize: 12)),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                          visualDensity: VisualDensity.compact,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Flexible(child: RoleBadge(role: user.role, isDense: false)),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: const [
-                      Icon(Icons.verified, size: 14, color: Colors.green),
-                      SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          'Authenticated via Firebase & Firestore',
-                          style: TextStyle(fontSize: 11, color: Colors.green, fontWeight: FontWeight.w500),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 14),
-
           // Hackathon Prototype Disclaimer Card
           Card(
             color: colorScheme.errorContainer.withValues(alpha: 0.3),
